@@ -1,10 +1,8 @@
-// FIX: Add missing React import
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { t } from '../translations';
-
-declare const jspdf: any;
-declare const html2canvas: any;
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 const applyPrintStyles = (): HTMLStyleElement => {
   const styleId = 'pdf-print-styles';
@@ -67,7 +65,6 @@ export const exportComponentAsPdf = async (
   await new Promise(resolve => setTimeout(resolve, 1500));
 
   try {
-    const { jsPDF } = jspdf;
     const canvas = await html2canvas(container, {
       scale: 2,
       useCORS: true,
@@ -123,7 +120,6 @@ export const exportElementAsPdf = async (
     await new Promise(resolve => setTimeout(resolve, 100));
 
     try {
-        const { jsPDF } = jspdf;
         const canvas = await html2canvas(element, {
             scale: 2,
             useCORS: true,

@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI, Type } from "@google/genai";
-import { OcrResult, SummaryData, Unit, InflationData } from '../src/types';
-import { t } from '../src/translations';
+import { OcrResult, SummaryData, Unit, InflationData } from './_lib/types';
+import { t } from './_lib/translations';
 import { toJalaliDateString } from './_lib/jalali';
 
 // --- Internal Handlers for each Gemini Task ---
