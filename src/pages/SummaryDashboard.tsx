@@ -9,8 +9,6 @@ import SkeletonLoader from '../components/common/SkeletonLoader';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import { useToast } from '../components/common/Toast';
 
-declare var Chart: any;
-
 type Period = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
 
 interface SummaryDashboardProps {
@@ -191,7 +189,8 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
       
       const ctx = spendingTimeChartRef.current.getContext('2d');
       if (ctx) {
-        spendingTimeChartInstance.current = new Chart(ctx, {
+// FIX: Cannot find name 'Chart'. Access Chart from the window object.
+        spendingTimeChartInstance.current = new (window as any).Chart(ctx, {
           type: 'line',
           data: {
             labels: summaryData.charts.spendingOverTime.labels,
@@ -224,7 +223,8 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
 
       const ctx = spendingCategoryChartRef.current.getContext('2d');
       if (ctx) {
-        spendingCategoryChartInstance.current = new Chart(ctx, {
+// FIX: Cannot find name 'Chart'. Access Chart from the window object.
+        spendingCategoryChartInstance.current = new (window as any).Chart(ctx, {
           type: 'doughnut',
           data: {
             labels: summaryData.charts.spendingByCategory.labels,

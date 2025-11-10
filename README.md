@@ -61,9 +61,8 @@ The application uses a private GitHub Gist to store its data.
     *   Click **"Import Git Repository"** and select your newly forked repo.
 
 2.  **Configure the Vercel Project:**
-    *   Vercel should automatically detect that this is a **Vite** project.
-    *   **Framework Preset**: Ensure `Vite` is selected.
-    *   **Build & Development Settings**: You can leave these as the defaults Vercel suggests for Vite. It will automatically use the correct `build` command and set the output directory to `dist`.
+    *   **Framework Preset**: Vercel should automatically detect and select **`Vite`**. If not, choose it from the dropdown. This is the most important step.
+    *   **Build & Development Settings**: You can leave these as the defaults Vercel suggests for Vite. It will automatically use the `build` command and set the output directory to `dist`.
     *   Expand the **Environment Variables** section.
 
 3.  **Set Environment Variables:**
@@ -76,7 +75,7 @@ The application uses a private GitHub Gist to store its data.
 | `API_KEY`      | Your Google Gemini API Key              |
 
 4.  **Deploy:**
-    *   Click the **Deploy** button. Vercel will build and deploy your application. It will provide you with a live URL where you can access your app.
+    *   Click the **Deploy** button. Vercel will now correctly build and deploy your application.
 
 ### Step 3: Run Locally (Optional)
 
@@ -94,8 +93,12 @@ The application uses a private GitHub Gist to store its data.
     npm install
     ```
 4.  **Link and Pull Environment Variables:**
+    *   This will link your local project to your Vercel project.
     ```bash
     vercel link
+    ```
+    *   This will download your environment variables into a local `.env.development.local` file for the dev server to use.
+    ```bash
     vercel env pull .env.development.local
     ```
 5.  **Start the Development Server:**

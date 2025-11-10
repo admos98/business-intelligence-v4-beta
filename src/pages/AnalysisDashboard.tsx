@@ -10,8 +10,6 @@ import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import { parseJalaliDate, toJalaliDateString } from '../lib/jalali';
 import { useToast } from '../components/common/Toast';
 
-declare var Chart: any;
-
 type Metric = 'totalSpend' | 'totalQuantity' | 'uniquePurchases' | 'avgPricePerUnit';
 type GroupBy = 'vendor' | 'category' | 'date' | 'item';
 type Tab = 'inflation' | 'ai' | 'reports';
@@ -139,7 +137,8 @@ const InflationTracker: React.FC = () => {
 
             const ctx = chartRef.current.getContext('2d');
             if (ctx) {
-                chartInstance.current = new Chart(ctx, {
+// FIX: Cannot find name 'Chart'. Access Chart from the window object.
+                chartInstance.current = new (window as any).Chart(ctx, {
                     type: 'line',
                     data: {
                         labels: inflationData.priceIndexHistory.map(p => p.period),
@@ -376,7 +375,8 @@ const CustomReports: React.FC = () => {
         let chartType: 'line' | 'bar' | 'pie' = config.groupBy === 'date' ? 'line' : 'bar';
         if (['category', 'vendor', 'item'].includes(config.groupBy) && config.metrics.length === 1 && config.metrics[0] === 'totalSpend') chartType = 'pie';
         
-        chartInstance.current = new Chart(chartRef.current.getContext('2d')!, { type: chartType, data: processedData.chartData, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } } });
+// FIX: Cannot find name 'Chart'. Access Chart from the window object.
+        chartInstance.current = new (window as any).Chart(chartRef.current.getContext('2d')!, { type: chartType, data: processedData.chartData, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } } });
     }
      return () => { if(chartInstance.current) chartInstance.current.destroy(); };
   }, [processedData]);

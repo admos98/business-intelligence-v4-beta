@@ -75,7 +75,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
         } catch (error) {
             addToast(t.importError, 'error');
             console.error("Import failed:", error);
-            if (error instanceof Error && (error.message.includes('saveData') || error.message.includes('Gist'))) {
+            if (error instanceof Error && (error.message.includes('saveData'))) {
                 addToast(t.syncError, 'error');
             }
         }
