@@ -15,6 +15,11 @@ export const fetchData = async (): Promise<StoredData | null> => {
             throw new Error(`Failed to fetch data: ${errorData.details || response.statusText}`);
         }
         
+        // Vercel's response for an empty body might be a 204 No Content
+        if (response.status === 204) {
+            return null;
+        }
+        
         return await response.json();
 
     } catch (error) {

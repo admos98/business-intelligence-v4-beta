@@ -1,6 +1,6 @@
 # Business Intelligence for Mehrnoosh's Cafe
 
-This is a full-stack, AI-powered purchasing and analysis tool built with React, Vercel Serverless Functions, and using a GitHub Gist as a database.
+This is a full-stack, AI-powered purchasing and analysis tool built with React, Vite, Vercel Serverless Functions, and using a GitHub Gist as a database.
 
 ## Features
 
@@ -14,7 +14,7 @@ This is a full-stack, AI-powered purchasing and analysis tool built with React, 
 
 ## Architecture
 
--   **Frontend**: React (with TypeScript) and Zustand for state management.
+-   **Frontend**: React (with TypeScript), Vite for building, and Zustand for state management.
 -   **Backend**: Vercel Serverless Functions (written in TypeScript) acting as a secure API layer.
 -   **Database**: A private GitHub Gist for simple, version-controlled JSON data storage.
 -   **AI**: Google Gemini API for all intelligent features, accessed via a secure backend endpoint.
@@ -55,69 +55,51 @@ The application uses a private GitHub Gist to store its data.
 
 ### Step 2: Set Up and Deploy on Vercel
 
-1.  **Fork and Clone the Repository:**
-    *   First, get the code into your own GitHub account.
-    *   Clone your repository to your local machine:
-        ```bash
-        git clone https://github.com/YourUsername/your-repo-name.git
-        cd your-repo-name
-        ```
+1.  **Fork this Repository & Link on Vercel:**
+    *   Fork this repository to your own GitHub account.
+    *   Go to your [Vercel Dashboard](https://vercel.com/new).
+    *   Click **"Import Git Repository"** and select your newly forked repo.
 
+2.  **Configure the Vercel Project:**
+    *   Vercel should automatically detect that this is a **Vite** project.
+    *   **Framework Preset**: Ensure `Vite` is selected.
+    *   **Build & Development Settings**: You can leave these as the defaults Vercel suggests for Vite. It will automatically use the correct `build` command and set the output directory to `dist`.
+    *   Expand the **Environment Variables** section.
+
+3.  **Set Environment Variables:**
+    *   You need to securely store your API keys on Vercel. Add the following three variables, replacing the placeholder values with your actual keys from Step 1 and the prerequisites.
+    
+| Name           | Value                                   |
+| -------------- | --------------------------------------- |
+| `GITHUB_TOKEN` | Your GitHub Personal Access Token       |
+| `GIST_ID`      | Your GitHub Gist ID                     |
+| `API_KEY`      | Your Google Gemini API Key              |
+
+4.  **Deploy:**
+    *   Click the **Deploy** button. Vercel will build and deploy your application. It will provide you with a live URL where you can access your app.
+
+### Step 3: Run Locally (Optional)
+
+1.  **Clone your repository:**
+    ```bash
+    git clone https://github.com/YourUsername/your-repo-name.git
+    cd your-repo-name
+    ```
 2.  **Install Vercel CLI:**
-    *   Open your terminal and install the Vercel command-line interface:
-        ```bash
-        npm install -g vercel
-        ```
-
-3.  **Link the Project to Vercel:**
-    *   In your project directory, run:
-        ```bash
-        vercel login
-        vercel link
-        ```
-    *   Follow the on-screen prompts to link your local project to a new Vercel project.
-
-4.  **Set Environment Variables:**
-    *   You need to securely store your API keys on Vercel. Run the following commands, replacing the placeholders with your actual keys from Step 1 and the prerequisites.
-        ```bash
-        # Add your GitHub Personal Access Token (for the database)
-        vercel env add GITHUB_TOKEN
-
-        # Add your Gist ID (for the database)
-        vercel env add GIST_ID
-
-        # Add your Google Gemini API Key (for all AI features)
-        vercel env add API_KEY
-        ```
-    *   Vercel will prompt you to paste each value. When asked which environments to apply them to, select **Production, Preview, and Development**.
-
-### Step 3: Run Locally (Optional but Recommended)
-
-1.  **Install Dependencies:**
+    ```bash
+    npm install -g vercel
+    ```
+3.  **Install Dependencies:**
     ```bash
     npm install
     ```
-
-2.  **Pull Environment Variables:**
-    *   To use your secret keys locally, pull them down from Vercel:
-        ```bash
-        vercel env pull .env.development.local
-        ```
-    *   This creates a `.env.development.local` file that the Vercel CLI will use.
-
-3.  **Start the Development Server:**
+4.  **Link and Pull Environment Variables:**
+    ```bash
+    vercel link
+    vercel env pull .env.development.local
+    ```
+5.  **Start the Development Server:**
     ```bash
     vercel dev
     ```
     *   Your app should now be running locally, typically at `http://localhost:3000`.
-
-### Step 4: Deploy to Production
-
-1.  **Deploy:**
-    *   From your project's root directory, simply run:
-        ```bash
-        vercel --prod
-        ```
-
-2.  **Done!**
-    *   Vercel will build and deploy your application. It will provide you with a live URL where you can access your app. Any future pushes to your main branch will trigger automatic deployments if you've connected your GitHub repository through the Vercel dashboard.

@@ -38,7 +38,7 @@ export function toJalaliDateString(isoDate: string, options: { format?: 'numeric
     if (options.format === 'long') {
         return `${jd.toLocaleString('fa-IR')} ${jalaliMonths[jm - 1]} ${jy.toLocaleString('fa-IR')}`;
     }
-
+    
     // Default to numeric
     const fJm = String(jm).padStart(2, '0');
     const fJd = String(jd).padStart(2, '0');

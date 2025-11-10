@@ -8,14 +8,16 @@ interface SettingsModalProps {
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
-  const { githubToken: currentToken, gistId: currentGistId, setApiCredentials } = useShoppingStore();
+  const { githubToken, gistId, setApiCredentials } = useShoppingStore();
   const { addToast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
-  const [githubToken, setGithubToken] = useState(currentToken);
-  const [gistId, setGistId] = useState(currentGistId);
+  const [token, setToken] = useState(githubToken);
+  const [id, setId] = useState(gistId);
 
-  useEffect(() => { setIsOpen(true); }, []);
-  
+  useEffect(() => {
+    setIsOpen(true);
+  }, []);
+
   const handleClose = () => {
     setIsOpen(false);
     setTimeout(onClose, 300);
@@ -23,28 +25,29 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setApiCredentials(githubToken, gistId);
+    setApiCredentials(token.trim(), id.trim());
     addToast(t.settingsSaved, 'success');
     handleClose();
   };
 
   return (
     <div
-      className={`fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`}
+      className={`fixed inset-0 bg-black/70 flex items-center justify-center z-50 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`}
       onClick={handleClose}
     >
       <div
-        className={`bg-surface p-6 rounded-xl border border-border w-full max-w-md transition-all duration-300 ${isOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10'}`}
+        className={`bg-surface p-6 rounded-xl border border-border shadow-card w-full max-w-md m-4 transition-all duration-300 ${isOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10'}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-xl font-bold text-primary mb-2">{t.settingsTitle}</h2>
-        <p className="text-sm text-secondary mb-6">{t.settingsDescription}</p>
-
+        <h2 className="text-xl font-bold text-primary mb-2 text-center">{t.settingsTitle}</h2>
+        <p className="text-sm text-secondary text-center mb-6">{t.settingsDescription}</p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-secondary mb-1">{t.githubToken}</label>
             <input
-              type="password" value={githubToken} onChange={(e) => setGithubToken(e.target.value)}
+              type="password" // Use password type for tokens
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
               className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
               required
             />
@@ -52,7 +55,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           <div>
             <label className="block text-sm font-medium text-secondary mb-1">{t.gistId}</label>
             <input
-              type="text" value={gistId} onChange={(e) => setGistId(e.target.value)}
+              type="text"
+              value={id}
+              onChange={(e) => setId(e.target.value)}
               className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
               required
             />

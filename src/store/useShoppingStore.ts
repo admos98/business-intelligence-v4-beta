@@ -94,7 +94,7 @@ const debouncedSaveData = (state: FullShoppingState) => {
 
 
 export const useShoppingStore = create<FullShoppingState>((set, get) => ({
-      isHydrating: true,
+      isHydrating: false,
       ...emptyState,
 
       // Auth Slice
@@ -103,7 +103,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       login: (username, password) => {
         const user = get().users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.passwordHash === password);
         if (user) {
-          set({ currentUser: user });
+          set({ currentUser: user, isHydrating: true });
           return true;
         }
         return false;
@@ -766,14 +766,12 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                     ? list.items.map(item => ({ ...item, purchaseDate: listDate })) 
                     : [];
             })
-            // FIX: Corrected filter to handle paidPrice being 0. `!= null` also acts as a type guard for TypeScript.
             .filter(item => item.status === ItemStatus.Bought && item.paidPrice != null);
 
         if (allPurchases.length === 0) return null;
         
-        // FIX: Removed `!` non-null assertions as they are no longer needed after the filter fix, resolving multiple type errors.
         const kpis = {
-            totalSpend: allPurchases.reduce((sum, item) => sum + item.paidPrice, 0),
+            totalSpend: allPurchases.reduce((sum, item) => sum + item.paidPrice!, 0),
             totalItems: new Set(allPurchases.map(item => item.name)).size,
             avgDailySpend: 0,
             topCategory: null as { name: string, amount: number } | null,
@@ -784,7 +782,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         kpis.avgDailySpend = kpis.totalSpend / totalDays;
         
         const categorySpend = allPurchases.reduce((acc, item) => {
-            acc[item.category] = (acc[item.category] || 0) + item.paidPrice;
+            acc[item.category] = (acc[item.category] || 0) + item.paidPrice!;
             return acc;
         }, {} as Record<string, number>);
         
@@ -795,7 +793,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const vendorSpend = allPurchases.reduce((acc, item) => {
             if (item.vendorId) {
                 const vendorName = vendorMap.get(item.vendorId) || "Unknown";
-                acc[vendorName] = (acc[vendorName] || 0) + item.paidPrice;
+                acc[vendorName] = (acc[vendorName] || 0) + item.paidPrice!;
             }
             return acc;
         }, {} as Record<string, number>);
@@ -812,7 +810,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         }
         allPurchases.forEach(item => {
             const key = toJalaliDateString(item.purchaseDate.toISOString());
-            timeMap.set(key, (timeMap.get(key) || 0) + item.paidPrice);
+            timeMap.set(key, (timeMap.get(key) || 0) + item.paidPrice!);
         });
         spendingOverTime.labels = Array.from(timeMap.keys());
         spendingOverTime.data = Array.from(timeMap.values());
@@ -833,9 +831,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       importData: async (jsonData) => {
         try {
             const data = JSON.parse(jsonData);
-            // Basic validation
             if (Array.isArray(data.lists)) {
-                // Cleanse receiptImage from imported data
                 const cleanedLists = data.lists.map((list: any) => ({
                     ...list,
                     items: list.items.map((item: any) => {
@@ -853,7 +849,6 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 };
 
                 set(cleanedData);
-                // After importing, immediately save to the cloud
                 await saveData(cleanedData);
             } else {
                 throw new Error("Invalid data format");
