@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 // FIX: Add .ts extension to fix module import error
 import { t } from '../translations.ts';
-import { logoSvg } from '../assets/logo';
-import Card from '../components/common/Card';
+import { logoSvg } from '../assets/logo.ts';
+import Card from '../components/common/Card.tsx';
 
 interface LoginPageProps {
   onLogin: (username: string, password: string) => boolean;
@@ -18,7 +18,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
-    
+
     // Simulate network delay
     setTimeout(() => {
         const success = onLogin(username, password);
@@ -61,7 +61,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                   required
                 />
               </div>
-              
+
               {error && <p className="text-sm text-danger-soft bg-danger/20 p-2 rounded-lg text-center">{error}</p>}
 
               <button

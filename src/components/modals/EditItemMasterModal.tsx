@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 // FIX: Add .ts extension to fix module import errors
 import { t } from '../../translations.ts';
 import { MasterItem, Unit } from '../../types.ts';
-import { useShoppingStore } from '../../store/useShoppingStore.ts';
-import { useToast } from '../common/Toast';
+import { useShoppingStore } from '../../src/store/useShoppingStore.ts';
+import { useToast } from '../../src/components/common/Toast.tsx';
 
 interface EditItemMasterModalProps {
   onClose: () => void;
@@ -19,7 +19,7 @@ const EditItemMasterModal: React.FC<EditItemMasterModalProps> = ({ onClose, item
   const [unit, setUnit] = useState(itemToEdit.unit);
 
   useEffect(() => { setIsOpen(true); }, []);
-  
+
   const handleClose = () => {
     setIsOpen(false);
     setTimeout(onClose, 300);

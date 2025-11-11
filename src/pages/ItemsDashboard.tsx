@@ -1,18 +1,15 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import Chart from 'chart.js/auto';
-// FIX: Add .ts extension to fix module import error
 import { t } from '../translations.ts';
 import { useShoppingStore } from '../store/useShoppingStore.ts';
 import Header from '../components/common/Header.tsx';
 import { MasterItem } from '../types.ts';
-import EditItemMasterModal from '../components/modals/EditItemMasterModal';
-import { useToast } from '../components/common/Toast';
-import CurrencyDisplay from '../components/common/CurrencyDisplay';
-// FIX: Add .ts extension to fix module import error
-import { analyzePriceTrend } from '../lib/gemini.ts';
-import { toJalaliDateString } from '../lib/jalali';
-import Card from '../components/common/Card';
-import SkeletonLoader from '../components/common/SkeletonLoader';
+import EditItemMasterModal from '../components/modals/EditItemMasterModal.tsx';
+import { useToast } from '../components/common/Toast.tsx';
+import CurrencyDisplay from '../components/common/CurrencyDisplay.tsx';
+import { toJalaliDateString } from '../lib/jalali.ts';
+import Card from '../components/common/Card.tsx';
+import SkeletonLoader from '../components/common/SkeletonLoader.tsx';
+import { Chart } from 'chart.js/auto';
 
 const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L14.732 3.732z" /></svg>;
 
@@ -53,30 +50,64 @@ const ItemTrendModal: React.FC<{ item: MasterItem, onClose: () => void }> = ({ i
   const [isAiLoading, setIsAiLoading] = useState(true);
 
   const chartRef = useRef<HTMLCanvasElement | null>(null);
-  const chartInstance = useRef<Chart | null>(null);
+  const chartInstance = useRef<any | null>(null);
 
   useEffect(() => { setIsOpen(true); }, []);
-  
+
   const handleClose = () => {
     setIsOpen(false);
     setTimeout(onClose, 300);
   };
 
+  // --- THIS IS THE CORRECTED SECTION ---
   useEffect(() => {
     const priceHistory = getItemPriceHistory(item.name, item.unit);
     setHistory(priceHistory);
-    
+
     if (priceHistory.length > 1) {
         setIsAiLoading(true);
-        analyzePriceTrend(item.name, priceHistory)
-            .then(setAiInsight)
-            .catch(() => setAiInsight(t.aiError))
-            .finally(() => setIsAiLoading(false));
+
+        const fetchAiInsight = async () => {
+          try {
+            const response = await fetch('/api/gemini', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                task: 'analyzePriceTrend', // Specify the task for your API router
+                payload: {
+                  itemName: item.name,
+                  priceHistory: priceHistory,
+                }
+              }),
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.details || `Server error: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            // Your API returns the result in the 'data' property
+            setAiInsight(result.data);
+
+          } catch (error) {
+            console.error("Failed to fetch AI insight:", error);
+            setAiInsight(t.aiError);
+          } finally {
+            setIsAiLoading(false);
+          }
+        };
+
+        fetchAiInsight();
+
     } else {
         setAiInsight(t.notEnoughDataForTrend);
         setIsAiLoading(false);
     }
   }, [item, getItemPriceHistory]);
+  // --- END OF CORRECTED SECTION ---
 
   useEffect(() => {
     if (chartInstance.current) chartInstance.current.destroy();
@@ -117,7 +148,7 @@ const ItemTrendModal: React.FC<{ item: MasterItem, onClose: () => void }> = ({ i
     <div className={`fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
       <div className={`bg-surface p-6 rounded-xl border border-border w-full max-w-2xl max-h-[90vh] flex flex-col transition-all duration-300 ${isOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10'}`}>
         <h2 className="text-xl font-bold text-primary mb-4 flex-shrink-0">{t.priceTrendFor(item.name)}</h2>
-        <div className="flex-grow min-h-0 space-y-4">
+        <div className="flex-grow min-h-0 space-y-4 overflow-y-auto">
           <div className="h-[250px] bg-background p-2 rounded-lg">
             <canvas ref={chartRef}></canvas>
           </div>
@@ -125,7 +156,7 @@ const ItemTrendModal: React.FC<{ item: MasterItem, onClose: () => void }> = ({ i
             {isAiLoading ? <SkeletonLoader lines={3} /> : <p className="text-primary whitespace-pre-wrap leading-relaxed">{aiInsight}</p>}
           </Card>
         </div>
-         <div className="mt-6 flex justify-end">
+         <div className="mt-6 flex justify-end flex-shrink-0">
             <button onClick={handleClose} className="px-4 py-2 bg-accent text-accent-text font-medium rounded-lg hover:opacity-90 transition-opacity">
               {t.close}
             </button>
@@ -141,12 +172,12 @@ interface ItemsDashboardProps {
   onLogout: () => void;
 }
 
-const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack, onLogout }) => {
+const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack, onLogout,}) => {
   const { getAllKnownItems, getItemPriceHistory } = useShoppingStore();
   const [modalState, setModalState] = useState<{ open: boolean; item?: MasterItem }>({ open: false });
   const [analyzedItem, setAnalyzedItem] = useState<MasterItem | null>(null);
   const { addToast } = useToast();
-  
+
   const allItems = useMemo(() => getAllKnownItems(), [getAllKnownItems]);
 
   const handleExportJson = () => {
@@ -188,7 +219,7 @@ const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack, onLogout }) => 
                     <div className="p-5 flex-grow">
                       <h2 className="text-lg font-bold text-primary mb-1">{item.name}</h2>
                       <p className="text-sm text-secondary mb-3">{item.category} / {item.unit}</p>
-                      
+
                        <div className="space-y-3 border-t border-border pt-3 text-sm">
                             <div className="flex justify-between items-center">
                                 <span className="text-secondary">{t.lastPrice}:</span>

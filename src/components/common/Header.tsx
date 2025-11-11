@@ -35,7 +35,7 @@ const Header: React.FC<HeaderProps> = ({ title, onBack, backText, children, onLo
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-  
+
   useEffect(() => {
     const handleScroll = () => {
         setIsScrolled(window.scrollY > 10);
@@ -49,7 +49,7 @@ const Header: React.FC<HeaderProps> = ({ title, onBack, backText, children, onLo
     <header className={`bg-surface/80 backdrop-blur-lg sticky top-0 z-20 border-b border-border transition-shadow duration-300 ${isScrolled ? 'shadow-header-scrolled' : ''}`}>
       <div className="max-w-7xl mx-auto py-3 px-4 sm:px-6 lg:px-8 relative">
         <div className="flex items-center justify-between gap-4">
-          
+
           {/* RIGHT Group (Logo & Title) */}
           <div className="flex items-center gap-3">
              <h1 className="text-lg font-bold text-primary tracking-tight text-right">
@@ -65,7 +65,7 @@ const Header: React.FC<HeaderProps> = ({ title, onBack, backText, children, onLo
                 &larr; {backText}
               </button>
             )}
-            
+
             <div className="hidden sm:flex items-center gap-2">
                 {children}
                 {onLogout && (
@@ -74,7 +74,7 @@ const Header: React.FC<HeaderProps> = ({ title, onBack, backText, children, onLo
                     </button>
                 )}
             </div>
-            
+
             <ThemeToggleButton theme={theme} toggleTheme={toggleTheme} />
 
             {(React.Children.count(children) > 0 || onLogout || onBack) && (
@@ -91,7 +91,7 @@ const Header: React.FC<HeaderProps> = ({ title, onBack, backText, children, onLo
           </div>
 
         </div>
-        
+
         {isMenuOpen && (React.Children.count(children) > 0 || onLogout || onBack) && (
             <div ref={menuRef} className="sm:hidden absolute top-full right-4 mt-2 w-56 bg-surface rounded-md shadow-lg border border-border z-30 p-2 animate-fade-in-down">
                 <div className="flex flex-col gap-1">
@@ -116,7 +116,7 @@ const Header: React.FC<HeaderProps> = ({ title, onBack, backText, children, onLo
                         return child;
                     })}
                     {(onBack || React.Children.count(children) > 0) && onLogout && <div className="border-t border-border my-1"></div>}
-                    
+
                     {onLogout && (
                           <button onClick={() => { onLogout(); setIsMenuOpen(false); }} className="w-full text-right justify-start px-3 py-2 text-sm text-danger font-medium rounded-lg hover:bg-danger-soft transition-colors flex items-center gap-2">
                               {t.logout}

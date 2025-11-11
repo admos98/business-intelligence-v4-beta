@@ -6,7 +6,7 @@ type Theme = 'light' | 'dark';
 export const useTheme = (): [Theme, () => void] => {
   const [theme, setTheme] = useState<Theme>(() => {
     // Get initial theme without waiting for useEffect to prevent FOUC
-    return (localStorage.getItem('theme') as Theme | null) || 
+    return (localStorage.getItem('theme') as Theme | null) ||
            (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
   });
 
@@ -21,7 +21,7 @@ export const useTheme = (): [Theme, () => void] => {
       const themedSvg = logoSvg
         .replace('var(--logo-bg)', bg)
         .replace('var(--logo-fg)', fg);
-        
+
       const svgBlob = new Blob([themedSvg], { type: 'image/svg+xml' });
       const oldUrl = favicon.href;
       favicon.href = URL.createObjectURL(svgBlob);

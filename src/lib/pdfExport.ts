@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { t } from '../translations';
+// FIX: Add .ts extension to fix module import error
+import { t } from '../translations.ts';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 

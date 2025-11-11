@@ -9,6 +9,8 @@
   },
   "dependencies": {
     "@google/genai": "^0.14.0",
+    "@google/generative-ai": "^0.24.1",
+    "@vercel/node": "^5.5.5",
     "chart.js": "^4.4.3",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
@@ -17,8 +19,8 @@
     "zustand": "^4.5.4"
   },
   "devDependencies": {
-    "@types/node": "^20.14.9",
-    "@types/react": "^18.3.3",
+    "@types/node": "^20.19.24",
+    "@types/react": "^18.3.26",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "typescript": "^5.5.3",

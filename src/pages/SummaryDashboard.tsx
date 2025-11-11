@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import Chart from 'chart.js/auto';
 // FIX: Add .tsx extension to fix module import error
 import Header from '../components/common/Header.tsx';
-import Card from '../components/common/Card';
+import Card from '../components/common/Card.tsx';
 // FIX: Add .ts extension to fix module import error
 import { t } from '../translations.ts';
 import { useShoppingStore } from '../store/useShoppingStore.ts';
 import { SummaryData } from '../types.ts';
 import { generateExecutiveSummary } from '../lib/gemini.ts';
-import SkeletonLoader from '../components/common/SkeletonLoader';
-import CurrencyDisplay from '../components/common/CurrencyDisplay';
-import { useToast } from '../components/common/Toast';
+import SkeletonLoader from '../components/common/SkeletonLoader.tsx';
+import CurrencyDisplay from '../components/common/CurrencyDisplay.tsx';
+import { useToast } from '../components/common/Toast.tsx';
+// FIX: Replace declare with import for Chart.js
+import { Chart } from 'chart.js/auto';
+
 
 type Period = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
 
@@ -29,11 +31,11 @@ const LoadingOverlay = () => (
 );
 
 
-const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout }) => {
+const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout,}) => {
   const [period, setPeriod] = useState<Period>('30d');
   const getSummaryData = useShoppingStore(state => state.getSummaryData);
   const { addToast } = useToast();
-  
+
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
   const [aiSummary, setAiSummary] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -41,9 +43,9 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
   const [isUpdating, setIsUpdating] = useState(false);
 
   const spendingTimeChartRef = useRef<HTMLCanvasElement | null>(null);
-  const spendingTimeChartInstance = useRef<Chart | null>(null);
+  const spendingTimeChartInstance = useRef<any | null>(null);
   const spendingCategoryChartRef = useRef<HTMLCanvasElement | null>(null);
-  const spendingCategoryChartInstance = useRef<Chart | null>(null);
+  const spendingCategoryChartInstance = useRef<any | null>(null);
 
   useEffect(() => {
     setIsUpdating(true);
@@ -55,7 +57,7 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
         }
         setIsUpdating(false);
     }, 100); // Small delay to allow UI to show loading state
-    
+
     return () => clearTimeout(timer);
   }, [period, getSummaryData]);
 
@@ -78,9 +80,9 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
     if (!summaryData) return;
 
     const dataToExport = {
-      period,
+      periodIdentifier: period,
       aiSummary,
-      ...summaryData,
+      ...summaryData, // This will correctly include summaryData.period with its start/end dates
     };
 
     const dataString = JSON.stringify(dataToExport, (key, value) => {
@@ -90,7 +92,7 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
       }
       return value;
     }, 2);
-    
+
     const blob = new Blob([dataString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -117,21 +119,21 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
       // FIX: Cast interaction mode to const to fix type error
       interaction: { intersect: false, mode: 'index' as const },
       scales: {
-          x: { 
-              ticks: { 
+          x: {
+              ticks: {
                   font: { family: "'Vazirmatn', sans-serif" },
                   autoSkip: true,
                   maxRotation: 45,
                   minRotation: 0,
-              } 
+              }
           },
-          y: { 
-              ticks: { 
+          y: {
+              ticks: {
                   font: { family: "'Vazirmatn', sans-serif" },
                   callback: function(value: number | string) {
                       return formatLargeNumber(typeof value === 'string' ? parseFloat(value) : value);
-                  } 
-              } 
+                  }
+              }
           }
       },
       plugins: {
@@ -158,11 +160,11 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
   const doughnutChartOptions = useMemo(() => ({
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { 
-          legend: { 
+      plugins: {
+          legend: {
               // FIX: Cast legend position to const to fix type error
-              position: 'right' as const, 
-              labels: { font: { family: "'Vazirmatn', sans-serif" }} 
+              position: 'right' as const,
+              labels: { font: { family: "'Vazirmatn', sans-serif" }}
           },
           tooltip: {
               bodyFont: { family: "'Vazirmatn', sans-serif" },
@@ -191,7 +193,7 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
       const styles = getComputedStyle(document.documentElement);
       const accentColor = styles.getPropertyValue('--color-accent').trim();
       const accentSoftColor = styles.getPropertyValue('--color-accent-soft').trim();
-      
+
       const ctx = spendingTimeChartRef.current.getContext('2d');
       if (ctx) {
         spendingTimeChartInstance.current = new Chart(ctx, {
@@ -207,7 +209,7 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
               tension: 0.3,
             }],
           },
-          options: lineChartOptions as any, // Cast to any to avoid complex chart.js option types
+          options: lineChartOptions,
         });
       }
     }
@@ -238,7 +240,7 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
               borderWidth: 0,
             }],
           },
-          options: doughnutChartOptions as any, // Cast to any to avoid complex chart.js option types
+          options: doughnutChartOptions,
         });
       }
     }
@@ -289,7 +291,7 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
               </div>
             </Card>
         </div>
-        
+
         <Card title={t.aiExecutiveSummary}>
             {isAiLoading ? <SkeletonLoader lines={5} /> : <p className="text-primary whitespace-pre-wrap leading-relaxed">{aiSummary}</p>}
         </Card>

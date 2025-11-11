@@ -1,8 +1,12 @@
+// src/store/useShoppingStore.ts
+
 import { create } from 'zustand';
-import { ShoppingList, ShoppingItem, CafeCategory, Vendor, OcrResult, Unit, ItemStatus, PaymentStatus, PaymentMethod, PendingPaymentItem, SmartSuggestion, SummaryData, RecentPurchaseItem, MasterItem, AuthSlice, User, ShoppingState, InflationData, InflationDetail, InflationPoint } from '../types';
+// FIX: Removed unused 'User' type
+import { ShoppingList, ShoppingItem, CafeCategory, Vendor, OcrResult, Unit, ItemStatus, PaymentStatus, PaymentMethod, PendingPaymentItem, SmartSuggestion, SummaryData, RecentPurchaseItem, MasterItem, AuthSlice, ShoppingState, InflationData, InflationDetail, InflationPoint } from '../types';
 import { t } from '../translations';
 import { parseJalaliDate, toJalaliDateString, gregorianToJalali } from '../lib/jalali';
-import { fetchData, saveData } from '../lib/api';
+// FIX: Added .ts extension to resolve module path ambiguity.
+import { fetchData, saveData } from '../lib/api.ts';
 
 type SummaryPeriod = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
 
@@ -12,7 +16,7 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   vendors: Vendor[];
   categoryVendorMap: Record<string, string>; // categoryName -> vendorId
   itemInfoMap: Record<string, { unit: Unit, category: string }>;
-  
+
   hydrateFromCloud: () => Promise<void>;
 
   // List Actions
@@ -21,7 +25,7 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   deleteList: (listId: string) => void;
   updateItem: (listId: string, itemId: string, updates: Partial<ShoppingItem>) => void;
   addItemFromSuggestion: (suggestion: SmartSuggestion) => boolean;
-  
+
   addCustomData: (item: ShoppingItem) => void;
 
   // OCR Action
@@ -80,7 +84,7 @@ const debouncedSaveData = (state: FullShoppingState) => {
         if (!currentUser || isHydrating) {
             return;
         }
-        
+
         const dataToSave = {
             lists: state.lists,
             customCategories: state.customCategories,
@@ -88,7 +92,8 @@ const debouncedSaveData = (state: FullShoppingState) => {
             categoryVendorMap: state.categoryVendorMap,
             itemInfoMap: state.itemInfoMap,
         };
-        saveData(dataToSave).catch(err => console.error("Auto-save failed:", err));
+        // FIX: Explicitly typed 'err' as 'any' to resolve implicit 'any' error.
+        saveData(dataToSave).catch((err: any) => console.error("Auto-save failed:", err));
     }, 1500); // Debounce for 1.5 seconds
 };
 
@@ -98,7 +103,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       ...emptyState,
 
       // Auth Slice
-      users: [{ id: 'user-1', username: 'mehrnoosh', passwordHash: 'cafe' }], 
+      users: [{ id: 'user-1', username: 'mehrnoosh', passwordHash: 'cafe' }],
       currentUser: null,
       login: (username, password) => {
         const user = get().users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.passwordHash === password);
@@ -129,7 +134,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
       createList: (date) => {
         const listId = toJalaliDateString(date.toISOString());
-        
+
         const existingList = get().lists.find(l => l.id === listId);
         if (existingList) {
           return existingList.id;
@@ -158,7 +163,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         set((state) => ({ lists: state.lists.filter((list) => list.id !== listId) }));
         debouncedSaveData(get());
       },
-      
+
       updateItem: (listId, itemId, updates) => {
         set(state => ({
             lists: state.lists.map(list => {
@@ -196,7 +201,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             status: ItemStatus.Pending,
             estimatedPrice: latestInfo.pricePerUnit ? latestInfo.pricePerUnit * (latestInfo.lastAmount || 1) : undefined
         };
-        
+
         get().updateList(listId, { ...list, items: [...list.items, newItem] });
         return true;
       },
@@ -204,7 +209,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       addOcrPurchase: (ocrResult, paymentMethod, paymentStatus, vendorName) => {
         const { date, items: ocrItems } = ocrResult;
         const vendorId = get().findOrCreateVendor(vendorName);
-        
+
         const parsedDate = parseJalaliDate(date);
         if (!parsedDate) {
             console.error("Invalid OCR date, cannot create list:", date);
@@ -213,7 +218,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
         const targetListId = get().createList(parsedDate);
         const targetList = get().lists.find(l => l.id === targetListId)!;
-        
+
         const newShoppingItems: ShoppingItem[] = ocrItems.map((item, index) => ({
             id: `item-${Date.now()}-${index}`,
             name: item.name,
@@ -227,14 +232,14 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             paymentMethod: paymentMethod,
             vendorId: vendorId,
         }));
-        
+
         newShoppingItems.forEach(item => {
             get().addCustomData(item);
             if(item.category && vendorId) {
                 get().updateCategoryVendorMap(item.category, vendorId);
             }
         });
-        
+
         const updatedList = { ...targetList, items: [...targetList.items, ...newShoppingItems] };
         get().updateList(targetListId, updatedList);
 
@@ -278,7 +283,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         }
         return get().addVendor({ name: trimmedName });
       },
-      
+
       updateCategoryVendorMap: (category, vendorId) => {
         set(state => ({
             categoryVendorMap: {
@@ -288,7 +293,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         }));
         debouncedSaveData(get());
       },
-      
+
       updateMasterItem: (originalName, originalUnit, updates) => {
           set(state => {
               const newLists = state.lists.map(list => ({
@@ -315,7 +320,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       addCustomData: (item) => {
         const { category, name, unit } = item;
         const allCats = get().allCategories();
-        
+
         let stateChanged = false;
         const stateUpdates: Partial<FullShoppingState> = {};
 
@@ -323,7 +328,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           stateUpdates.customCategories = [...get().customCategories, category];
           stateChanged = true;
         }
-        
+
         if (name && unit && category) {
             stateUpdates.itemInfoMap = { ...get().itemInfoMap, [name.trim()]: { unit, category } };
             stateChanged = true;
@@ -334,13 +339,13 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             debouncedSaveData(get());
         }
       },
-      
+
       allCategories: () => {
          const { customCategories } = get();
          const combined = [...DEFAULT_CATEGORIES, ...customCategories];
          return [...new Set(combined)];
       },
-      
+
       getKnownItemNames: () => {
         const itemNames = new Set<string>();
         get().lists.forEach(list => {
@@ -349,7 +354,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         Object.keys(get().itemInfoMap).forEach(name => itemNames.add(name));
         return Array.from(itemNames).sort((a,b) => a.localeCompare(b, 'fa'));
       },
-      
+
       getAllKnownItems: () => {
         const allPurchasedItems = get().lists
             .flatMap(list => list.items.map(item => ({ ...item, purchaseDate: new Date(list.createdAt) })))
@@ -377,17 +382,18 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             currentStats.totalQuantity += item.purchasedAmount || 0;
             currentStats.totalSpend += item.paidPrice || 0;
             currentStats.purchaseCount++;
-            
+
             if (item.purchaseDate >= currentStats.latestPurchaseDate) {
                 currentStats.latestPurchaseDate = item.purchaseDate;
                 currentStats.lastPricePerUnit = (item.paidPrice || 0) / (item.purchasedAmount || 1);
                 currentStats.category = item.category;
             }
-            
+
             itemStats.set(key, currentStats);
         });
 
         const result: MasterItem[] = [];
+        // FIX: Removed unused 'key' parameter.
         itemStats.forEach((value) => {
             const { latestPurchaseDate, ...masterItem } = value;
             result.push(masterItem);
@@ -442,16 +448,16 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       isItemInTodaysPendingList: (name, unit) => {
         const today = new Date();
         const listId = toJalaliDateString(new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())).toISOString());
-        
+
         const list = get().lists.find(l => l.id === listId);
-        
+
         if (!list) {
             return false;
         }
-    
-        return list.items.some(item => 
-            item.name === name && 
-            item.unit === unit && 
+
+        return list.items.some(item =>
+            item.name === name &&
+            item.unit === unit &&
             item.status === ItemStatus.Pending
         );
       },
@@ -530,7 +536,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         categoryItemPrices.forEach((itemMap, categoryName) => {
             let totalSpendInCategory = 0;
             let weightedInflationSum = 0;
-            
+
             // To calculate a representative start/end price for the category display
             let weightedStartPriceSum = 0;
             let weightedEndPriceSum = 0;
@@ -544,10 +550,10 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
                     if (startPrice > 0) {
                         const itemInflationPercentage = ((endPrice - startPrice) / startPrice);
-                        
+
                         weightedInflationSum += itemInflationPercentage * itemSpend;
                         totalSpendInCategory += itemSpend;
-                        
+
                         weightedStartPriceSum += startPrice * itemSpend;
                         weightedEndPriceSum += endPrice * itemSpend;
                     }
@@ -558,7 +564,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 const overallCategoryInflation = (weightedInflationSum / totalSpendInCategory) * 100;
                 const avgStartPrice = weightedStartPriceSum / totalSpendInCategory;
                 const avgEndPrice = weightedEndPriceSum / totalSpendInCategory;
-                
+
                 categoryInflation.push({
                     name: categoryName,
                     startPrice: avgStartPrice,
@@ -567,13 +573,13 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 });
             }
         });
-        
+
         // --- Price Index History (monthly) ---
         const priceIndexHistory: InflationPoint[] = [];
         const monthlySpending = new Map<string, { totalSpend: number, weightedPriceSum: number }>();
         const baseMonthPrices = new Map<string, number>();
         const firstMonthKey = `${new Date(allPurchases[0].purchaseDate).getFullYear()}/${String(new Date(allPurchases[0].purchaseDate).getMonth() + 1).padStart(2, '0')}`;
-        
+
         allPurchases.forEach(item => {
             const itemKey = `${item.name}-${item.unit}`;
             const monthKey = `${item.purchaseDate.getFullYear()}/${String(item.purchaseDate.getMonth() + 1).padStart(2, '0')}`;
@@ -587,7 +593,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             const jalaliMonthKey = `${jYear}/${String(jMonth).padStart(2, '0')}`;
             const itemKey = `${item.name}-${item.unit}`;
             const basePrice = baseMonthPrices.get(itemKey);
-            
+
             if (basePrice) {
                 const currentPrice = item.paidPrice! / item.purchasedAmount!;
                 const priceRatio = currentPrice / basePrice;
@@ -642,12 +648,12 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             }
             itemHistory.get(key)!.dates.push(item.purchaseDate);
         });
-        
+
         const suggestions: SmartSuggestion[] = [];
         const today = new Date();
         const oneDay = 24 * 60 * 60 * 1000;
 
-        itemHistory.forEach((history, key) => {
+        itemHistory.forEach((history) => {
             if (history.dates.length < 2) return;
 
             const diffs = [];
@@ -727,18 +733,18 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             .filter(i => i.status === ItemStatus.Bought && i.paidPrice);
 
         if (allPurchases.length < 5) return null;
-        
+
         const sorted = allPurchases.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         const firstDay = new Date(sorted[0].date);
         const lastDay = new Date(sorted[sorted.length - 1].date);
         const oneDay = 24 * 60 * 60 * 1000;
         const totalDays = Math.round(Math.abs((lastDay.getTime() - firstDay.getTime()) / oneDay)) + 1;
-        
+
         if (totalDays < 30) return null;
 
         const totalSpend = sorted.reduce((sum, item) => sum + item.paidPrice!, 0);
         const daily = totalSpend / totalDays;
-        
+
         return {
             daily,
             monthly: daily * 30,
@@ -762,14 +768,14 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const allPurchases = get().lists
             .flatMap(list => {
                 const listDate = new Date(list.createdAt);
-                return listDate >= startDate && listDate <= endDate 
-                    ? list.items.map(item => ({ ...item, purchaseDate: listDate })) 
+                return listDate >= startDate && listDate <= endDate
+                    ? list.items.map(item => ({ ...item, purchaseDate: listDate }))
                     : [];
             })
             .filter(item => item.status === ItemStatus.Bought && item.paidPrice != null);
 
         if (allPurchases.length === 0) return null;
-        
+
         const kpis = {
             totalSpend: allPurchases.reduce((sum, item) => sum + item.paidPrice!, 0),
             totalItems: new Set(allPurchases.map(item => item.name)).size,
@@ -780,15 +786,15 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
         const totalDays = Math.max(1, (endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24));
         kpis.avgDailySpend = kpis.totalSpend / totalDays;
-        
+
         const categorySpend = allPurchases.reduce((acc, item) => {
             acc[item.category] = (acc[item.category] || 0) + item.paidPrice!;
             return acc;
         }, {} as Record<string, number>);
-        
+
         const topCat = Object.entries(categorySpend).sort((a,b) => b[1] - a[1])[0];
         if (topCat) kpis.topCategory = { name: topCat[0], amount: topCat[1] };
-        
+
         const vendorMap = new Map(get().vendors.map(v => [v.id, v.name]));
         const vendorSpend = allPurchases.reduce((acc, item) => {
             if (item.vendorId) {
@@ -800,7 +806,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
         const topVen = Object.entries(vendorSpend).sort((a,b) => b[1] - a[1])[0];
         if (topVen) kpis.topVendor = { name: topVen[0], amount: topVen[1] };
-        
+
         // Chart Data
         const spendingOverTime: { labels: string[]; data: number[] } = { labels: [], data: [] };
         const timeMap = new Map<string, number>();
@@ -814,7 +820,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         });
         spendingOverTime.labels = Array.from(timeMap.keys());
         spendingOverTime.data = Array.from(timeMap.values());
-        
+
         const spendingByCategory: { labels: string[]; data: number[] } = { labels: [], data: [] };
         const sortedCategories = Object.entries(categorySpend).sort((a,b) => b[1] - a[1]);
         spendingByCategory.labels = sortedCategories.map(c => c[0]);

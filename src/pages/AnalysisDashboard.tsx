@@ -1,24 +1,25 @@
+// src/pages/AnalysisDashboard.tsx
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-// FIX: Add .ts extension to fix module import error
-import { ItemStatus, InflationData, InflationDetail } from '../types.ts';
-// FIX: Add .tsx extension to fix module import error
-import Header from '../components/common/Header.tsx';
-import Card from '../components/common/Card';
-import SkeletonLoader from '../components/common/SkeletonLoader';
-// FIX: Add .ts extension to fix module import error
-import { t } from '../translations.ts';
-// FIX: Add .ts extension to fix module import error
-import { useShoppingStore } from '../store/useShoppingStore.ts';
-// FIX: Add .ts extension to fix module import error
-import { getAnalysisInsights, getInflationInsight } from '../lib/gemini.ts';
-import CurrencyDisplay from '../components/common/CurrencyDisplay';
-// FIX: Add .ts extension to fix module import error
-import { parseJalaliDate, toJalaliDateString } from '../lib/jalali.ts';
-import { useToast } from '../components/common/Toast';
-// FIX: Replace 'chart.js' with 'chart.js/auto' for proper chart registration.
 import { Chart } from 'chart.js/auto';
 
+// --- CORRECTED IMPORTS ---
+// FIX: Changed 'Item' to 'ShoppingItem' as defined in your types.ts
+import { ItemStatus, InflationData, InflationDetail, ShoppingList, ShoppingItem, Vendor } from '../types.ts';
+import Header from '../components/common/Header.tsx';
+import Card from '../components/common/Card.tsx';
+import SkeletonLoader from '../components/common/SkeletonLoader.tsx';
+import { t } from '../translations.ts';
+import { useShoppingStore } from '../store/useShoppingStore.ts';
+import CurrencyDisplay from '../components/common/CurrencyDisplay.tsx';
+import { parseJalaliDate, toJalaliDateString } from '../lib/jalali.ts';
+// FIX: 'useToast' is unused, so it can be commented out or removed.
+// import { useToast } from '../components/common/Toast.tsx';
 
+// FIX: Importing from the correct file that contains the Gemini AI functions.
+import { getAnalysisInsights, getInflationInsight } from '../lib/gemini.ts';
+
+// --- TYPE DEFINITIONS ---
 type Metric = 'totalSpend' | 'totalQuantity' | 'uniquePurchases' | 'avgPricePerUnit';
 type GroupBy = 'vendor' | 'category' | 'date' | 'item';
 type Tab = 'inflation' | 'ai' | 'reports';
@@ -61,7 +62,7 @@ interface InsightsHubProps {
     onLogout: () => void;
 }
 
-const InsightsHub: React.FC<InsightsHubProps> = ({ onBack, onLogout }) => {
+const InsightsHub: React.FC<InsightsHubProps> = ({ onBack, onLogout}) => {
     const [activeTab, setActiveTab] = useState<Tab>('inflation');
 
     const renderTabContent = () => {
@@ -75,12 +76,12 @@ const InsightsHub: React.FC<InsightsHubProps> = ({ onBack, onLogout }) => {
 
     return (
         <div className="flex flex-col h-screen">
-            <Header title={t.insightsHub} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout} />
+            <Header title={t.insightsHub || "Insights Hub"} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout} />
             <main className="flex-grow p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full">
                 <div className="mb-6 border-b border-border flex items-center justify-center">
-                    <TabButton id="inflation" label={t.inflationTracker} activeTab={activeTab} setActiveTab={setActiveTab} />
-                    <TabButton id="ai" label={t.aiBusinessAdvisor} activeTab={activeTab} setActiveTab={setActiveTab} />
-                    <TabButton id="reports" label={t.customReports} activeTab={activeTab} setActiveTab={setActiveTab} />
+                    <TabButton id="inflation" label={t.inflationTracker || "Inflation"} activeTab={activeTab} setActiveTab={setActiveTab} />
+                    <TabButton id="ai" label={t.aiBusinessAdvisor || "AI Advisor"} activeTab={activeTab} setActiveTab={setActiveTab} />
+                    <TabButton id="reports" label={t.customReports || "Reports"} activeTab={activeTab} setActiveTab={setActiveTab} />
                 </div>
                 <div className="animate-fade-in">
                     {renderTabContent()}
@@ -107,7 +108,8 @@ const TabButton: React.FC<{id: Tab, label: string, activeTab: Tab, setActiveTab:
 // #region Inflation Tracker Tab
 const InflationTracker: React.FC = () => {
     const { getInflationData } = useShoppingStore();
-    const [period, setPeriod] = useState<number>(90);
+    // FIX: 'setPeriod' was unused and has been removed.
+    const [period] = useState<number>(90);
     const [inflationData, setInflationData] = useState<InflationData | null>(null);
     const [aiInsight, setAiInsight] = useState('');
     const [isLoading, setIsLoading] = useState(true);
@@ -125,7 +127,7 @@ const InflationTracker: React.FC = () => {
             const data = getInflationData(period);
             setInflationData(data);
             setIsLoading(false);
-            
+
             if (data) {
                 getInflationInsight(data)
                     .then(setAiInsight)
@@ -136,7 +138,7 @@ const InflationTracker: React.FC = () => {
             }
         }, 100);
     }, [period, getInflationData]);
-    
+
     useEffect(() => {
         if (chartInstance.current) chartInstance.current.destroy();
         if (chartRef.current && inflationData?.priceIndexHistory) {
@@ -149,40 +151,40 @@ const InflationTracker: React.FC = () => {
                 chartInstance.current = new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: inflationData.priceIndexHistory.map(p => p.period),
-                        datasets: [{ data: inflationData.priceIndexHistory.map(p => p.priceIndex), borderColor: accentColor, backgroundColor: accentSoftColor, fill: true, tension: 0.3 }]
+                        labels: inflationData.priceIndexHistory.map((p) => p.period),
+                        datasets: [{ data: inflationData.priceIndexHistory.map((p) => p.priceIndex), borderColor: accentColor, backgroundColor: accentSoftColor, fill: true, tension: 0.3 }]
                     },
                     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
                 });
             }
         }
     }, [inflationData]);
-    
-    if (isLoading) return <div className="text-center py-8"><p>{t.generatingInflationData}</p></div>;
+
+    if (isLoading) return <div className="text-center py-8"><p>{t.generatingInflationData || "Loading..."}</p></div>;
     if (!inflationData) return <div className="text-center py-8"><p>{t.noDataForPeriod}</p></div>;
 
     const change = inflationData.overallChange;
-    const changeText = change > 0 ? t.priceIncrease(change.toFixed(1)) : t.priceDecrease(Math.abs(change).toFixed(1));
+    const changeText = change > 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`;
 
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <Card className="md:col-span-1 text-center">
-                    <h4 className="text-secondary text-sm mb-1">{t.overallInflation}</h4>
+                    <h4 className="text-secondary text-sm mb-1">{t.overallInflation || "Overall Inflation"}</h4>
                     <p className={`text-3xl font-bold ${change > 0.5 ? 'text-danger' : change < -0.5 ? 'text-success' : 'text-primary'}`}>{changeText}</p>
                 </Card>
                 <Card title={t.aiAnalystInsight} className="md:col-span-2">
                     {isAiLoading ? <SkeletonLoader lines={3} /> : <p className="text-sm leading-relaxed whitespace-pre-wrap">{aiInsight}</p>}
                 </Card>
             </div>
-            <Card title={t.priceIndexHistory}>
+            <Card title={t.priceIndexHistory || "Price Index"}>
                 <div className="h-[250px]"><canvas ref={chartRef}></canvas></div>
             </Card>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <Card title={t.topPriceRisesItems}>
+                 <Card title={t.topPriceRisesItems || "Top Item Rises"}>
                     <RiseList data={inflationData.topItemRises} />
                  </Card>
-                 <Card title={t.topPriceRisesCategories}>
+                 <Card title={t.topPriceRisesCategories || "Top Category Rises"}>
                      <RiseList data={inflationData.topCategoryRises} />
                  </Card>
              </div>
@@ -210,7 +212,6 @@ const RiseList: React.FC<{data: InflationDetail[]}> = ({data}) => {
         </ul>
     );
 };
-
 // #endregion
 
 // #region AI Business Advisor Tab
@@ -224,9 +225,10 @@ const AiBusinessAdvisor: React.FC = () => {
         if (!aiQuery.trim()) return;
         setIsAiLoading(true);
         setAiInsight('');
-        
+
         try {
-            const purchasedItems = lists.flatMap(l => l.items.filter(i => i.status === ItemStatus.Bought));
+            // FIX: Changed 'Item' to 'ShoppingItem'
+            const purchasedItems = lists.flatMap((l: ShoppingList) => l.items.filter((i: ShoppingItem) => i.status === ItemStatus.Bought));
             const insight = await getAnalysisInsights(aiQuery, "The user is asking a question about their entire purchase history.", purchasedItems);
             setAiInsight(insight);
         } catch (e) {
@@ -258,19 +260,13 @@ const AiBusinessAdvisor: React.FC = () => {
 
 // #region Custom Reports Tab
 const CustomReports: React.FC = () => {
-  const { lists, vendors, allCategories } = useShoppingStore();
-  const { addToast } = useToast();
-  const vendorMap = useMemo(() => new Map(vendors.map(v => [v.id, v.name])), [vendors]);
-  const allKnownCategories = useMemo(() => allCategories(), [allCategories]);
-  const allKnownItems = useMemo(() => {
-    const itemSet = new Set<string>();
-    lists.forEach(l => l.items.forEach(i => itemSet.add(i.name)));
-    return Array.from(itemSet).sort((a,b) => a.localeCompare(b, 'fa'));
-  }, [lists]);
+  // FIX: Removed unused 'allCategories' and 'addToast'.
+  const { lists, vendors } = useShoppingStore();
+  const vendorMap = useMemo(() => new Map(vendors.map((v: Vendor) => [v.id, v.name])), [vendors]);
 
   const initialDateRange = useMemo(() => {
     const today = new Date();
-    const sortedLists = [...lists].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const sortedLists = [...lists].sort((a: ShoppingList, b: ShoppingList) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     const earliestDate = sortedLists.length > 0 ? new Date(sortedLists[0].createdAt) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     return {
       start: toJalaliDateString(earliestDate.toISOString()),
@@ -295,10 +291,6 @@ const CustomReports: React.FC = () => {
     setConfig(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleFilterChange = <K extends keyof AnalysisConfig['filters']>(key: K, value: AnalysisConfig['filters'][K]) => {
-     setConfig(prev => ({ ...prev, filters: { ...prev.filters, [key]: value } }));
-  };
-  
   const handleRunAnalysis = () => {
     setIsProcessing(true);
     setProcessedData(null);
@@ -311,17 +303,30 @@ const CustomReports: React.FC = () => {
             return;
         }
         end.setHours(23, 59, 59, 999);
-        let filteredItems = lists.flatMap(l => new Date(l.createdAt) >= start && new Date(l.createdAt) <= end ? l.items.map(i => ({...i, purchaseDate: toJalaliDateString(l.createdAt)})) : []).filter(i => i.status === ItemStatus.Bought);
-        if (config.filters.categories.length > 0) filteredItems = filteredItems.filter(i => config.filters.categories.includes(i.category));
-        if (config.filters.vendors.length > 0) filteredItems = filteredItems.filter(i => i.vendorId && config.filters.vendors.includes(i.vendorId));
-        if (config.filters.items.length > 0) filteredItems = filteredItems.filter(i => config.filters.items.includes(i.name));
 
-        const kpis = { totalSpend: filteredItems.reduce((s, i) => s + (i.paidPrice || 0), 0), uniqueItems: new Set(filteredItems.map(i => i.name)).size, uniqueVendors: new Set(filteredItems.map(i => i.vendorId).filter(Boolean)).size };
+        // FIX: Changed 'Item' to 'ShoppingItem'
+        type ItemWithDate = ShoppingItem & { purchaseDate: string };
 
-        const groupedMap = new Map<string, any[]>();
+        let filteredItems: ItemWithDate[] = lists.flatMap((l: ShoppingList) =>
+            new Date(l.createdAt) >= start && new Date(l.createdAt) <= end
+            ? l.items.map((i: ShoppingItem) => ({...i, purchaseDate: toJalaliDateString(l.createdAt)}))
+            : []
+        ).filter((i: ShoppingItem) => i.status === ItemStatus.Bought);
+
+        if (config.filters.categories.length > 0) filteredItems = filteredItems.filter((i: ShoppingItem) => config.filters.categories.includes(i.category));
+        if (config.filters.vendors.length > 0) filteredItems = filteredItems.filter((i: ShoppingItem) => i.vendorId && config.filters.vendors.includes(i.vendorId));
+        if (config.filters.items.length > 0) filteredItems = filteredItems.filter((i: ShoppingItem) => config.filters.items.includes(i.name));
+
+        const kpis = {
+            totalSpend: filteredItems.reduce((s: number, i: ShoppingItem) => s + (i.paidPrice || 0), 0),
+            uniqueItems: new Set(filteredItems.map((i: ShoppingItem) => i.name)).size,
+            uniqueVendors: new Set(filteredItems.map((i: ShoppingItem) => i.vendorId).filter(Boolean)).size
+        };
+
+        const groupedMap = new Map<string, ItemWithDate[]>();
         if (config.groupBy !== 'none') {
-            filteredItems.forEach(item => {
-                let key: string;
+            filteredItems.forEach((item: ItemWithDate) => {
+                let key = '';
                  switch (config.groupBy) {
                     case 'category': key = item.category || t.other; break;
                     case 'vendor': key = vendorMap.get(item.vendorId || '') || 'نامشخص'; break;
@@ -335,19 +340,19 @@ const CustomReports: React.FC = () => {
         } else {
             groupedMap.set('All Data', filteredItems);
         }
-        
+
         const tableData: Record<string, any>[] = [];
         const labels = Array.from(groupedMap.keys()).sort((a,b) => a.localeCompare(b, 'fa'));
-        
-        labels.forEach((key: string) => {
+
+        labels.forEach(key => {
             const groupItems = groupedMap.get(key)!;
             const row: Record<string, any> = { [config.groupBy]: key };
-            if(config.metrics.includes('totalSpend')) row.totalSpend = groupItems.reduce((s, i) => s + (i.paidPrice || 0), 0);
-            if(config.metrics.includes('totalQuantity')) row.totalQuantity = groupItems.reduce((s, i) => s + (i.purchasedAmount || i.amount || 0), 0);
+            if(config.metrics.includes('totalSpend')) row.totalSpend = groupItems.reduce((s: number, i: ShoppingItem) => s + (i.paidPrice || 0), 0);
+            if(config.metrics.includes('totalQuantity')) row.totalQuantity = groupItems.reduce((s: number, i: ShoppingItem) => s + (i.purchasedAmount || i.amount || 0), 0);
             if(config.metrics.includes('uniquePurchases')) row.uniquePurchases = groupItems.length;
             if(config.metrics.includes('avgPricePerUnit')) {
-                 const totalVal = groupItems.reduce((s, i) => s + (i.paidPrice || 0), 0);
-                 const totalQty = groupItems.reduce((s, i) => s + (i.purchasedAmount || i.amount || 1), 0);
+                 const totalVal = groupItems.reduce((s: number, i: ShoppingItem) => s + (i.paidPrice || 0), 0);
+                 const totalQty = groupItems.reduce((s: number, i: ShoppingItem) => s + (i.purchasedAmount || i.amount || 1), 0);
                  row.avgPricePerUnit = totalQty > 0 ? totalVal / totalQty : 0;
             }
             tableData.push(row);
@@ -363,27 +368,17 @@ const CustomReports: React.FC = () => {
         setIsProcessing(false);
     }, 100);
   };
-  
-  const handleExportJson = () => {
-    if (!processedData) return;
-    const dataString = JSON.stringify(processedData.tableData, null, 2);
-    const blob = new Blob([dataString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `analysis_results_${config.startDate.replace(/\//g, '-')}_to_${config.endDate.replace(/\//g, '-')}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    addToast(t.exportJsonSuccess, 'success');
-  };
 
   useEffect(() => {
     if (chartInstance.current) chartInstance.current.destroy();
     if (chartRef.current && processedData?.chartData.labels.length) {
         let chartType: 'line' | 'bar' | 'pie' = config.groupBy === 'date' ? 'line' : 'bar';
         if (['category', 'vendor', 'item'].includes(config.groupBy) && config.metrics.length === 1 && config.metrics[0] === 'totalSpend') chartType = 'pie';
-        
-        chartInstance.current = new Chart(chartRef.current.getContext('2d')!, { type: chartType, data: processedData.chartData, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } } });
+
+        const ctx = chartRef.current.getContext('2d');
+        if (ctx) {
+          chartInstance.current = new Chart(ctx, { type: chartType, data: processedData.chartData, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } } });
+        }
     }
      return () => { if(chartInstance.current) chartInstance.current.destroy(); };
   }, [processedData]);
@@ -438,7 +433,7 @@ const CustomReports: React.FC = () => {
              </>
            ) : (
                 <div className="flex items-center justify-center h-full bg-surface rounded-xl border-2 border-dashed border-border text-center text-secondary p-8">
-                    <p>{isProcessing ? t.generatingInsights : t.customReportDescription}</p>
+                    <p>{isProcessing ? t.generatingInsights : (t.customReportDescription || "Select criteria and run analysis.")}</p>
                 </div>
            )}
         </main>
@@ -449,7 +444,6 @@ const CustomReports: React.FC = () => {
 const DataTable: React.FC<{data: Record<string, any>[], groupBy: GroupBy | 'none', metrics: Metric[]}> = ({data, groupBy, metrics}) => {
     if (data.length === 0) return <p className="text-center text-secondary py-4">{t.noDataForPeriod}</p>
     const headers = [GROUP_BY_LABELS[groupBy], ...metrics.map(m => METRIC_LABELS[m])];
-    const keys = [groupBy, ...metrics];
     const formatValue = (key: string, value: any) => {
         if (typeof value !== 'number') return value;
         if (key === 'totalQuantity' || key === 'uniquePurchases') return value.toLocaleString('fa-IR');
