@@ -17,24 +17,22 @@ const OcrImportModal: React.FC<OcrImportModalProps> = ({ onClose, onConfirm }) =
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [parsedResult, setParsedResult] = useState<OcrResult | null>(null);
-  const [receiptImage, setReceiptImage] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Card);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(PaymentStatus.Paid);
   const [vendorName, setVendorName] = useState('');
 
   useEffect(() => { setIsOpen(true); }, []);
-  
+
   const handleClose = () => {
     setIsOpen(false);
     setTimeout(onClose, 300);
   };
-  
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       try {
         const compressedB64 = await compressImage(file);
-        setReceiptImage(compressedB64);
         processImage(compressedB64.split(',')[1]);
       } catch (error) {
         console.error("Image processing failed:", error);
@@ -55,12 +53,12 @@ const OcrImportModal: React.FC<OcrImportModalProps> = ({ onClose, onConfirm }) =
       setIsLoading(false);
     }
   }, [allCategories]);
-  
+
   const handleItemChange = (index: number, field: keyof OcrParsedItem, value: string | number) => {
     if (!parsedResult) return;
     const newItems = [...parsedResult.items];
     const targetItem = newItems[index];
-    
+
     if (field === 'name' || field === 'suggestedCategory' || field === 'unit') {
         // @ts-ignore
         targetItem[field] = value as string;
@@ -95,8 +93,8 @@ const OcrImportModal: React.FC<OcrImportModalProps> = ({ onClose, onConfirm }) =
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mb-4 p-3 bg-background rounded-lg flex-shrink-0">
                 <div className="flex items-center gap-2">
                     <label className="text-sm font-medium text-secondary">{t.receiptDate}:</label>
-                    <input 
-                        type="text" 
+                    <input
+                        type="text"
                         value={parsedResult.date}
                         onChange={(e) => setParsedResult({ ...parsedResult, date: e.target.value })}
                         placeholder={t.ocrDatePlaceholder}
@@ -154,7 +152,7 @@ const OcrImportModal: React.FC<OcrImportModalProps> = ({ onClose, onConfirm }) =
                 </div>))}
             </div>
         </>)}
-        
+
         <div className="mt-6 flex justify-end gap-3">
           <button type="button" onClick={handleClose} className="px-4 py-2 bg-border text-primary font-medium rounded-lg hover:bg-border/70 transition-colors">{t.cancel}</button>
           {parsedResult && <button onClick={handleSubmit} className="px-4 py-2 bg-accent text-accent-text font-medium rounded-lg hover:opacity-90 transition-opacity">{t.addAllToPurchased}</button>}

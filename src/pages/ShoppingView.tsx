@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo} from 'react';
 import { ShoppingList, ShoppingItem, Unit, ItemStatus, PaymentMethod, PaymentStatus, OcrResult } from '../types';
 import { t } from '../translations';
 import Header from '../components/common/Header';

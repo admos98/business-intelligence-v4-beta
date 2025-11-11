@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { ShoppingItem, Unit } from '../../types.ts';
 import { t } from '../../translations.ts';
 import { useShoppingStore } from '../../store/useShoppingStore.ts';
-import { useToast } from '../common/Toast.tsx';
+
 interface EditItemModalProps {
   item: ShoppingItem;
   onClose: () => void;

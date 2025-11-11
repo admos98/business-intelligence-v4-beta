@@ -5,7 +5,7 @@ import { t } from '../../translations.ts';
 import CurrencyDisplay from '../common/CurrencyDisplay';
 // FIX: Add .ts extension to fix module import errors
 import { useShoppingStore } from '../../store/useShoppingStore.ts';
-import { compressImage } from '../../lib/image';
+
 
 interface EditPurchasedItemModalProps {
   item: ShoppingItem;
@@ -16,7 +16,7 @@ interface EditPurchasedItemModalProps {
 const EditPurchasedItemModal: React.FC<EditPurchasedItemModalProps> = ({ item, onClose, onSave }) => {
   const { vendors, findOrCreateVendor } = useShoppingStore();
   const [isOpen, setIsOpen] = useState(false);
-  
+
   const [purchasedAmount, setPurchasedAmount] = useState<number | ''>(item.purchasedAmount || item.amount);
   const [pricePerUnit, setPricePerUnit] = useState<number | ''>(
     (item.paidPrice && item.purchasedAmount) ? item.paidPrice / item.purchasedAmount : ''
@@ -33,7 +33,7 @@ const EditPurchasedItemModal: React.FC<EditPurchasedItemModalProps> = ({ item, o
     setIsOpen(false);
     setTimeout(onClose, 300);
   };
-  
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (purchasedAmount !== '' && Number(purchasedAmount) > 0 && pricePerUnit !== '' && Number(pricePerUnit) >= 0) {

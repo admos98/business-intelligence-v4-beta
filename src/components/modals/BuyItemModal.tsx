@@ -5,7 +5,7 @@ import { t } from '../../translations.ts';
 import CurrencyDisplay from '../common/CurrencyDisplay';
 // FIX: Add .ts extension to fix module import errors
 import { useShoppingStore } from '../../store/useShoppingStore.ts';
-import { compressImage } from '../../lib/image';
+
 
 interface BuyItemModalProps {
   item: ShoppingItem;
@@ -25,10 +25,10 @@ const BuyItemModal: React.FC<BuyItemModalProps> = ({ item, onClose, onConfirm })
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Card);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(PaymentStatus.Paid);
 
-  useEffect(() => { 
-    setIsOpen(true); 
+  useEffect(() => {
+    setIsOpen(true);
     const latestInfo = getLatestPurchaseInfo(item.name, item.unit);
-    
+
     if (latestInfo.pricePerUnit) {
         setPricePerUnit(latestInfo.pricePerUnit);
     }
@@ -58,7 +58,7 @@ const BuyItemModal: React.FC<BuyItemModalProps> = ({ item, onClose, onConfirm })
     setIsOpen(false);
     setTimeout(onClose, 300);
   };
-  
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (purchasedAmount !== '' && Number(purchasedAmount) > 0 && pricePerUnit !== '' && Number(pricePerUnit) >= 0) {
