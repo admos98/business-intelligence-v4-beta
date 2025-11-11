@@ -1,3 +1,4 @@
+// tsconfig.json (Corrected)
 {
   "compilerOptions": {
     "target": "ESNext",
@@ -8,7 +9,7 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
+    // "noEmit": true,  <--- THIS LINE HAS BEEN REMOVED
     "jsx": "react-jsx",
     "strict": true,
     "noUnusedLocals": true,
