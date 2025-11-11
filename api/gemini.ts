@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI, Type } from "@google/genai";
-import { OcrResult, SummaryData, Unit, InflationData } from './_lib/types';
-import { t } from './_lib/translations';
-import { toJalaliDateString } from './_lib/jalali';
+import { OcrResult, SummaryData, Unit, InflationData } from '../src/types';
+import { t } from '../src/translations';
+import { toJalaliDateString } from '../src/lib/jalali';
 
 // --- Internal Handlers for each Gemini Task ---
 
@@ -10,17 +10,17 @@ async function handleParseReceipt(ai: GoogleGenAI, payload: { imageBase64: strin
   const { imageBase64, categories } = payload;
   const itemSchema = { type: Type.OBJECT, properties: { name: { type: Type.STRING }, quantity: { type: Type.NUMBER }, price: { type: Type.NUMBER }, unit: { type: Type.STRING }, suggestedCategory: { type: Type.STRING } }, required: ["name", "quantity", "price"] };
   const receiptSchema = { type: Type.OBJECT, properties: { date: { type: Type.STRING, description: "The date from the receipt in YYYY/MM/DD Jalali format." }, items: { type: Type.ARRAY, items: itemSchema } }, required: ["date", "items"] };
-  
+
   const unitValues = Object.values(Unit).join(', ');
   const prompt = `
     You are an expert receipt and invoice analyzer for a cafe, fluent in Persian.
     The user has provided an image of a receipt. Meticulously extract all items AND the date of the receipt.
     For each item, provide its name, quantity, and total price.
-    
+
     IMPORTANT - UNIT: Determine the unit of measurement for each item based on the receipt text (e.g., 'kg', 'عدد'). Choose the most appropriate unit from this list: [${unitValues}]. If no unit is specified or clear, you can use "${Unit.Piece}".
 
     IMPORTANT - CATEGORY: Based on the item name, suggest the most relevant category from the following list: [${categories.join(', ')}]. If no category fits, use "${t.other}".
-    
+
     IMPORTANT - DATE: Extract the date from the receipt. You MUST return it in the Jalali calendar format of YYYY/MM/DD. For example, '1403/05/01'.
 
     IMPORTANT - PRICES: Prices on Iranian receipts are in Rials. Extract the price exactly as it appears on the receipt. The final price in the JSON output MUST be in Rials.
@@ -70,7 +70,7 @@ async function handleGetAnalysisInsights(ai: GoogleGenAI, payload: { question: s
     2.  Answer the user's question directly and concisely in Persian.
     3.  If the data supports it, provide a brief "Insight" or "Recommendation" in a new paragraph. For example, if they ask for the most expensive vendor, you could recommend comparing prices.
     4.  If the data is insufficient to answer the question, clearly state that the answer cannot be determined from the current data view.
-    
+
     Be factual, data-driven, and professional.
     `;
     const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
@@ -135,7 +135,7 @@ async function handleAnalyzePriceTrend(ai: GoogleGenAI, payload: { itemName: str
 
     const firstPoint = priceHistory[0];
     const lastPoint = priceHistory[priceHistory.length - 1];
-    
+
     const formattedHistory = priceHistory.map(p => ({
         date: toJalaliDateString(p.date),
         price: p.pricePerUnit.toFixed(0)
@@ -169,7 +169,7 @@ async function handleGetInflationInsight(ai: GoogleGenAI, payload: { inflationDa
     - Overall Price Change: ${inflationData.overallChange.toFixed(1)}%
     - Top Item with Price Rise: ${inflationData.topItemRises.length > 0 ? `${inflationData.topItemRises[0].name} (+${inflationData.topItemRises[0].changePercentage.toFixed(0)}%)` : 'N/A'}
     - Top Category with Price Rise: ${inflationData.topCategoryRises.length > 0 ? `${inflationData.topCategoryRises[0].name} (+${inflationData.topCategoryRises[0].changePercentage.toFixed(0)}%)` : 'N/A'}
-    
+
     **Your Task:**
     1. Write a short, 2-3 sentence summary in Persian analyzing this data.
     2. Mention the overall trend and highlight the specific item or category that is driving the inflation the most.
@@ -194,7 +194,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!API_KEY) {
         return res.status(500).json({ error: 'Server configuration error: Missing API_KEY for Gemini.' });
     }
-    
+
     const ai = new GoogleGenAI({ apiKey: API_KEY });
     const { task, payload } = req.body;
 
