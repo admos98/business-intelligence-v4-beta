@@ -1,9 +1,12 @@
+// src/components/modals/EditItemMasterModal.tsx
+
 import React, { useState, useEffect } from 'react';
-// FIX: Add .ts extension to fix module import errors
 import { t } from '../../translations.ts';
 import { MasterItem, Unit } from '../../types.ts';
-import { useShoppingStore } from '../../src/store/useShoppingStore.ts';
-import { useToast } from '../../src/components/common/Toast.tsx';
+// FIX: Corrected the path by adding the missing slash.
+import { useShoppingStore } from '../../store/useShoppingStore.ts';
+// FIX: Corrected the path to be relative to the current file location.
+import { useToast } from '../common/Toast.tsx';
 
 interface EditItemMasterModalProps {
   onClose: () => void;
@@ -57,13 +60,13 @@ const EditItemMasterModal: React.FC<EditItemMasterModalProps> = ({ onClose, item
             <label className="block text-sm font-medium text-secondary mb-1">{t.category}</label>
              <input type="text" list="categories" value={category} onChange={e => setCategory(e.target.value)} placeholder={t.categoryPlaceholder} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"/>
               <datalist id="categories">
-                  {allCategories().map(cat => <option key={cat} value={cat}/>)}
+                  {/* FIX: Added explicit type '(cat: string)' to resolve implicit any error. */}
+                  {allCategories().map((cat: string) => <option key={cat} value={cat}/>)}
               </datalist>
           </div>
            <div>
             <label className="block text-sm font-medium text-secondary mb-1">{t.unit}</label>
             <select value={unit} onChange={e => setUnit(e.target.value as Unit)} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent">
-                {/* FIX: Add explicit type to map callback to resolve key error */}
                 {Object.values(Unit).map((u: string) => <option key={u} value={u}>{u}</option>)}
             </select>
           </div>

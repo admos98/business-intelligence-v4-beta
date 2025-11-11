@@ -5,7 +5,7 @@ import { t } from '../../translations.ts';
 import CurrencyDisplay from '../common/CurrencyDisplay';
 // FIX: Add .ts extension to fix module import errors
 import { useShoppingStore } from '../../store/useShoppingStore.ts';
-import { compressImage } from '../../lib/image';
+
 
 interface BulkBuyModalProps {
   items: ShoppingItem[];
@@ -46,7 +46,7 @@ const BulkBuyModal: React.FC<BulkBuyModalProps> = ({ items, onClose, onConfirm }
         setPurchaseDetails(newPurchaseDetails);
     }
   }, []);
-  
+
   const handleClose = () => {
     setIsOpen(false);
     setTimeout(onClose, 300);
@@ -55,7 +55,7 @@ const BulkBuyModal: React.FC<BulkBuyModalProps> = ({ items, onClose, onConfirm }
   const handleDetailChange = (itemId: string, field: keyof PurchaseDetail, value: string) => {
     setPurchaseDetails(prev => ({ ...prev, [itemId]: { ...prev[itemId], [field]: value === '' ? '' : parseFloat(value) } }));
   };
-  
+
   const isFormValid = useMemo(() => items.every(item => {
     const d = purchaseDetails[item.id];
     return d && d.purchasedAmount !== '' && Number(d.purchasedAmount) > 0 && d.pricePerUnit !== '' && Number(d.pricePerUnit) >= 0;
