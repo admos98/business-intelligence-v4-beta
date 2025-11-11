@@ -1,10 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { AggregatedShoppingItem, ItemStatus, PaymentStatus } from '../../types';
-import { t } from '../../translations';
-import { useShoppingStore } from '../../store/useShoppingStore';
+// FIX: Add .ts extension to fix module import errors
+import { AggregatedShoppingItem, ItemStatus, PaymentStatus } from '../../types.ts';
+import { t } from '../../translations.ts';
+import { useShoppingStore } from '../../store/useShoppingStore.ts';
 import CurrencyDisplay from '../common/CurrencyDisplay';
 import { parseJalaliDate, toJalaliDateString } from '../../lib/jalali';
-import { generateReportSummary } from '../../lib/gemini';
+// FIX: Add .ts extension to fix module import errors
+import { generateReportSummary } from '../../lib/gemini.ts';
 import JalaliCalendar from '../common/JalaliCalendar';
 import { exportComponentAsPdf } from '../../lib/pdfExport';
 import { useToast } from '../common/Toast';

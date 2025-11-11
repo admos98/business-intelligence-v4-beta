@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { t } from '../translations';
+// FIX: Add .ts extension to fix module import error
+import { t } from '../translations.ts';
 import { logoSvg } from '../assets/logo';
 import Card from '../components/common/Card';
 

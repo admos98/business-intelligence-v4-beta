@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import Header from '../components/common/Header';
+// FIX: Add .tsx extension to fix module import error
+import Header from '../components/common/Header.tsx';
 import Card from '../components/common/Card';
-import { t } from '../translations';
-import { useShoppingStore } from '../store/useShoppingStore';
-import { SummaryData } from '../types';
-import { generateExecutiveSummary } from '../lib/gemini';
+// FIX: Add .ts extension to fix module import error
+import { t } from '../translations.ts';
+import { useShoppingStore } from '../store/useShoppingStore.ts';
+import { SummaryData } from '../types.ts';
+import { generateExecutiveSummary } from '../lib/gemini.ts';
 import SkeletonLoader from '../components/common/SkeletonLoader';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import { useToast } from '../components/common/Toast';

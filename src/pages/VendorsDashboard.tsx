@@ -113,9 +113,9 @@ const VendorsDashboard: React.FC<VendorsDashboardProps> = ({ onBack, onLogout })
                         </div>
                    </div>
                 </div>
-                <div className="p-2 border-t border-border flex justify-end gap-2">
-                    <button onClick={() => setModalState({ open: true, vendor })} className="p-1.5 text-secondary hover:text-primary"><EditIcon/></button>
-                    <button onClick={() => handleDeleteVendor(vendor)} className="p-1.5 text-secondary hover:text-danger"><DeleteIcon/></button>
+                <div className="p-2 border-t border-border flex justify-end gap-2 items-center">
+                   <button onClick={() => setModalState({ open: true, vendor })} className="p-1.5 text-secondary hover:text-primary"><EditIcon/></button>
+                   <button onClick={() => handleDeleteVendor(vendor)} className="p-1.5 text-secondary hover:text-danger"><DeleteIcon/></button>
                 </div>
               </div>
             ))}
@@ -123,17 +123,17 @@ const VendorsDashboard: React.FC<VendorsDashboardProps> = ({ onBack, onLogout })
         )}
       </main>
       {modalState.open && (
-        <VendorModal
+        <VendorModal 
+          onClose={() => setModalState({ open: false })} 
           vendorToEdit={modalState.vendor}
-          onClose={() => setModalState({ open: false })}
         />
       )}
-      <ConfirmModal
+      <ConfirmModal 
         isOpen={deleteConfirm.isOpen}
         onClose={() => setDeleteConfirm({ isOpen: false })}
         onConfirm={confirmDelete}
         title={t.confirmDeleteTitle}
-        message={deleteConfirm.vendor ? t.confirmDeleteVendor(deleteConfirm.vendor.name) : ''}
+        message={t.confirmDeleteVendor(deleteConfirm.vendor?.name || '')}
         variant="danger"
       />
     </>

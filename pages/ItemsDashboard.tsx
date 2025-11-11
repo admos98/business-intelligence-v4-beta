@@ -1,12 +1,14 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { t } from '../translations';
-import { useShoppingStore } from '../store/useShoppingStore';
-import Header from '../components/common/Header';
-import { MasterItem } from '../types';
+// FIX: Add .ts extension to fix module import error
+import { t } from '../translations.ts';
+import { useShoppingStore } from '../store/useShoppingStore.ts';
+import Header from '../components/common/Header.tsx';
+import { MasterItem } from '../types.ts';
 import EditItemMasterModal from '../components/modals/EditItemMasterModal';
 import { useToast } from '../components/common/Toast';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
-import { analyzePriceTrend } from '../lib/gemini';
+// FIX: Add .ts extension to fix module import error
+import { analyzePriceTrend } from '../lib/gemini.ts';
 import { toJalaliDateString } from '../lib/jalali';
 import Card from '../components/common/Card';
 import SkeletonLoader from '../components/common/SkeletonLoader';

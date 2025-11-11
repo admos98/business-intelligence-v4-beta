@@ -1,7 +1,8 @@
 // This entire PDF generation method is deprecated due to issues with custom font embedding and text rendering for RTL languages.
 // The application has been standardized to use the html2canvas-based approach in `lib/pdfExport.ts` for consistent and accurate visual output.
 
-import { ShoppingList, AggregatedShoppingItem } from '../types';
+// FIX: Add .ts extension to fix module import error
+import { ShoppingList, AggregatedShoppingItem } from '../types.ts';
 
 // Deprecated: All functions are now no-ops to prevent accidental use.
 export const generateShoppingReportPdf = async (list: ShoppingList, vendorMap: Map<string, string>) => {

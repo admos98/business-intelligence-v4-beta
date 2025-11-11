@@ -1,4 +1,5 @@
-import { t } from '../translations';
+// FIX: Add .ts extension to fix module import error
+import { t } from '../translations.ts';
 
 export function gregorianToJalali(gy: number, gm: number, gd: number): [number, number, number] {
   const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];

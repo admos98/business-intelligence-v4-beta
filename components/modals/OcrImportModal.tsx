@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { t } from '../../translations';
-import { OcrParsedItem, OcrResult, PaymentMethod, PaymentStatus, Unit } from '../../types';
-import { parseReceipt } from '../../lib/gemini';
-import { useShoppingStore } from '../../store/useShoppingStore';
+// FIX: Add .ts extension to fix module import errors
+import { t } from '../../translations.ts';
+import { OcrParsedItem, OcrResult, PaymentMethod, PaymentStatus, Unit } from '../../types.ts';
+import { parseReceipt } from '../../lib/gemini.ts';
+import { useShoppingStore } from '../../store/useShoppingStore.ts';
 import { compressImage } from '../../lib/image';
 
 interface OcrImportModalProps {

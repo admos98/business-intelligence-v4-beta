@@ -1,16 +1,22 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { ItemStatus, InflationData, InflationDetail } from '../types';
-import Header from '../components/common/Header';
+// FIX: Add .ts extension to fix module import error
+import { ItemStatus, InflationData, InflationDetail } from '../types.ts';
+// FIX: Add .tsx extension to fix module import error
+import Header from '../components/common/Header.tsx';
 import Card from '../components/common/Card';
 import SkeletonLoader from '../components/common/SkeletonLoader';
-import { t } from '../translations';
-import { useShoppingStore } from '../store/useShoppingStore';
-import { getAnalysisInsights, getInflationInsight } from '../lib/gemini';
+// FIX: Add .ts extension to fix module import error
+import { t } from '../translations.ts';
+// FIX: Add .ts extension to fix module import error
+import { useShoppingStore } from '../store/useShoppingStore.ts';
+// FIX: Add .ts extension to fix module import error
+import { getAnalysisInsights, getInflationInsight } from '../lib/gemini.ts';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
-import { parseJalaliDate, toJalaliDateString } from '../lib/jalali';
+// FIX: Add .ts extension to fix module import error
+import { parseJalaliDate, toJalaliDateString } from '../lib/jalali.ts';
 import { useToast } from '../components/common/Toast';
-// FIX: Replace declare with import for Chart.js
-import { Chart } from 'chart.js';
+// FIX: Replace 'chart.js' with 'chart.js/auto' for proper chart registration.
+import { Chart } from 'chart.js/auto';
 
 
 type Metric = 'totalSpend' | 'totalQuantity' | 'uniquePurchases' | 'avgPricePerUnit';

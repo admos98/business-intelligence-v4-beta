@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { t } from '../../translations';
+// FIX: Add .ts extension to fix module import error
+import { t } from '../../translations.ts';
 import JalaliCalendar from '../common/JalaliCalendar';
 
 interface NewListModalProps {

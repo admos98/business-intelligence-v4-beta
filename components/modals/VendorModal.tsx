@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { t } from '../../translations';
-import { Vendor } from '../../types';
-import { useShoppingStore } from '../../store/useShoppingStore';
+// FIX: Add .ts extension to fix module import errors
+import { t } from '../../translations.ts';
+import { Vendor } from '../../types.ts';
+import { useShoppingStore } from '../../store/useShoppingStore.ts';
 import { useToast } from '../common/Toast';
 
 interface VendorModalProps {

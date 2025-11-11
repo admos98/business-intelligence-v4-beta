@@ -1,8 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { ShoppingItem, PaymentMethod, PaymentStatus } from '../../types';
-import { t } from '../../translations';
+// FIX: Add .ts extension to fix module import errors
+import { ShoppingItem, PaymentMethod, PaymentStatus } from '../../types.ts';
+import { t } from '../../translations.ts';
 import CurrencyDisplay from '../common/CurrencyDisplay';
-import { useShoppingStore } from '../../store/useShoppingStore';
+// FIX: Add .ts extension to fix module import errors
+import { useShoppingStore } from '../../store/useShoppingStore.ts';
 import { compressImage } from '../../lib/image';
 
 interface EditPurchasedItemModalProps {
