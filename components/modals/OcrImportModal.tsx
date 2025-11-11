@@ -105,13 +105,15 @@ const OcrImportModal: React.FC<OcrImportModalProps> = ({ onClose, onConfirm }) =
                  <div className="flex items-center gap-2">
                     <label className="text-sm font-medium text-secondary">{t.paymentMethod}:</label>
                     <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className="px-2 py-1 bg-surface border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-accent">
-                        {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
+                        {/* FIX: Add explicit type to map callback to resolve key error */}
+                        {Object.values(PaymentMethod).map((m: string) => <option key={m} value={m}>{m}</option>)}
                     </select>
                 </div>
                 <div className="flex items-center gap-2">
                     <label className="text-sm font-medium text-secondary">{t.paymentStatus}:</label>
                     <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value as PaymentStatus)} className="px-2 py-1 bg-surface border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-accent">
-                        {Object.values(PaymentStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                        {/* FIX: Add explicit type to map callback to resolve key error */}
+                        {Object.values(PaymentStatus).map((s: string) => <option key={s} value={s}>{s}</option>)}
                     </select>
                 </div>
                 <div className="flex items-center gap-2">
@@ -135,7 +137,8 @@ const OcrImportModal: React.FC<OcrImportModalProps> = ({ onClose, onConfirm }) =
                     <input type="number" value={item.quantity} onChange={e => handleItemChange(index, 'quantity', e.target.value)} className="w-full px-2 py-1 bg-surface border border-border rounded-md"/>
                     <select value={item.unit || ''} onChange={e => handleItemChange(index, 'unit', e.target.value)} className="w-full px-2 py-1 bg-surface border border-border rounded-md">
                         <option value="" disabled>{t.unit}</option>
-                        {Object.values(Unit).map(u => <option key={u} value={u}>{u}</option>)}
+                        {/* FIX: Add explicit type to map callback to resolve key error */}
+                        {Object.values(Unit).map((u: string) => <option key={u} value={u}>{u}</option>)}
                     </select>
                     <div className="relative group">
                         <input type="number" value={item.price} onChange={e => handleItemChange(index, 'price', e.target.value)} className="w-full px-2 py-1 bg-surface border border-border rounded-md"/>

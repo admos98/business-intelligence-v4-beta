@@ -9,6 +9,9 @@ import { getAnalysisInsights, getInflationInsight } from '../lib/gemini';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import { parseJalaliDate, toJalaliDateString } from '../lib/jalali';
 import { useToast } from '../components/common/Toast';
+// FIX: Replace declare with import for Chart.js
+import { Chart } from 'chart.js/auto';
+
 
 type Metric = 'totalSpend' | 'totalQuantity' | 'uniquePurchases' | 'avgPricePerUnit';
 type GroupBy = 'vendor' | 'category' | 'date' | 'item';
@@ -105,7 +108,7 @@ const InflationTracker: React.FC = () => {
     const [isAiLoading, setIsAiLoading] = useState(false);
 
     const chartRef = useRef<HTMLCanvasElement | null>(null);
-    const chartInstance = useRef<any | null>(null);
+    const chartInstance = useRef<Chart | null>(null);
 
     useEffect(() => {
         setIsLoading(true);
@@ -137,8 +140,7 @@ const InflationTracker: React.FC = () => {
 
             const ctx = chartRef.current.getContext('2d');
             if (ctx) {
-// FIX: Cannot find name 'Chart'. Access Chart from the window object.
-                chartInstance.current = new (window as any).Chart(ctx, {
+                chartInstance.current = new Chart(ctx, {
                     type: 'line',
                     data: {
                         labels: inflationData.priceIndexHistory.map(p => p.period),
@@ -281,7 +283,7 @@ const CustomReports: React.FC = () => {
   const [processedData, setProcessedData] = useState<ProcessedData | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const chartRef = useRef<HTMLCanvasElement | null>(null);
-  const chartInstance = useRef<any | null>(null);
+  const chartInstance = useRef<Chart | null>(null);
 
   const handleConfigChange = <K extends keyof AnalysisConfig>(key: K, value: AnalysisConfig[K]) => {
     setConfig(prev => ({ ...prev, [key]: value }));
@@ -331,7 +333,7 @@ const CustomReports: React.FC = () => {
         const tableData: Record<string, any>[] = [];
         const labels = Array.from(groupedMap.keys()).sort((a,b) => a.localeCompare(b, 'fa'));
         
-        labels.forEach(key => {
+        labels.forEach((key: string) => {
             const groupItems = groupedMap.get(key)!;
             const row: Record<string, any> = { [config.groupBy]: key };
             if(config.metrics.includes('totalSpend')) row.totalSpend = groupItems.reduce((s, i) => s + (i.paidPrice || 0), 0);
@@ -375,8 +377,7 @@ const CustomReports: React.FC = () => {
         let chartType: 'line' | 'bar' | 'pie' = config.groupBy === 'date' ? 'line' : 'bar';
         if (['category', 'vendor', 'item'].includes(config.groupBy) && config.metrics.length === 1 && config.metrics[0] === 'totalSpend') chartType = 'pie';
         
-// FIX: Cannot find name 'Chart'. Access Chart from the window object.
-        chartInstance.current = new (window as any).Chart(chartRef.current.getContext('2d')!, { type: chartType, data: processedData.chartData, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } } });
+        chartInstance.current = new Chart(chartRef.current.getContext('2d')!, { type: chartType, data: processedData.chartData, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } } });
     }
      return () => { if(chartInstance.current) chartInstance.current.destroy(); };
   }, [processedData]);

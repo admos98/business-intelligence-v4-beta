@@ -93,13 +93,15 @@ const BuyItemModal: React.FC<BuyItemModalProps> = ({ item, onClose, onConfirm })
               <div>
                 <label className="block text-sm font-medium text-secondary mb-1">{t.paymentMethod}</label>
                 <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent">
-                  {Object.values(PaymentMethod).map((method) => <option key={method} value={method}>{method}</option>)}
+                  {/* FIX: Add explicit type to map callback to resolve key error */}
+                  {Object.values(PaymentMethod).map((method: string) => <option key={method} value={method}>{method}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-secondary mb-1">{t.paymentStatus}</label>
                 <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value as PaymentStatus)} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent">
-                  {Object.values(PaymentStatus).map((status) => <option key={status} value={status}>{status}</option>)}
+                  {/* FIX: Add explicit type to map callback to resolve key error */}
+                  {Object.values(PaymentStatus).map((status: string) => <option key={status} value={status}>{status}</option>)}
                 </select>
               </div>
             </div>

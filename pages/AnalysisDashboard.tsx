@@ -9,8 +9,9 @@ import { getAnalysisInsights, getInflationInsight } from '../lib/gemini';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import { parseJalaliDate, toJalaliDateString } from '../lib/jalali';
 import { useToast } from '../components/common/Toast';
+// FIX: Replace declare with import for Chart.js
+import { Chart } from 'chart.js';
 
-declare var Chart: any;
 
 type Metric = 'totalSpend' | 'totalQuantity' | 'uniquePurchases' | 'avgPricePerUnit';
 type GroupBy = 'vendor' | 'category' | 'date' | 'item';

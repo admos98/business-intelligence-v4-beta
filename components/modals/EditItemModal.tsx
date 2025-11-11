@@ -41,7 +41,8 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, onClose, onSave }) 
              <div className="flex gap-4">
                 <input type="number" value={amount} onChange={e => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder={t.amount} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"/>
                 <select value={unit} onChange={e => setUnit(e.target.value as Unit)} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent">
-                    {Object.values(Unit).map(u => <option key={u} value={u}>{u}</option>)}
+                    {/* FIX: Add explicit type to map callback to resolve key error */}
+                    {Object.values(Unit).map((u: string) => <option key={u} value={u}>{u}</option>)}
                 </select>
              </div>
              <input type="text" list="categories" value={category} onChange={e => setCategory(e.target.value)} placeholder={t.categoryPlaceholder} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"/>

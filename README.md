@@ -62,7 +62,7 @@ The application uses a private GitHub Gist to store its data.
 
 2.  **Configure the Vercel Project:**
     *   **Framework Preset**: Vercel should automatically detect and select **`Vite`**. If not, choose it from the dropdown. This is the most important step.
-    *   **Build & Development Settings**: You can leave these as the defaults Vercel suggests for Vite. It will automatically use the `build` command and set the output directory to `dist`.
+    *   **Build & Development Settings**: You can leave these as the defaults Vercel suggests for Vite. It will automatically use the `build` command (`npm run build`) and set the output directory to `dist`.
     *   Expand the **Environment Variables** section.
 
 3.  **Set Environment Variables:**

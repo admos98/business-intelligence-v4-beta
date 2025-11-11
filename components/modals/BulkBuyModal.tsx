@@ -87,8 +87,10 @@ const BulkBuyModal: React.FC<BulkBuyModalProps> = ({ items, onClose, onConfirm }
                 {vendors.map(v => <option key={v.id} value={v.name} />)}
               </datalist>
             </div>
-            <select value={sharedPaymentMethod} onChange={e => setSharedPaymentMethod(e.target.value as PaymentMethod)} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent">{Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}</select>
-            <select value={sharedPaymentStatus} onChange={e => setSharedPaymentStatus(e.target.value as PaymentStatus)} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent">{Object.values(PaymentStatus).map(s => <option key={s} value={s}>{s}</option>)}</select>
+            {/* FIX: Add explicit type to map callback to resolve key error */}
+            <select value={sharedPaymentMethod} onChange={e => setSharedPaymentMethod(e.target.value as PaymentMethod)} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent">{Object.values(PaymentMethod).map((m: string) => <option key={m} value={m}>{m}</option>)}</select>
+            {/* FIX: Add explicit type to map callback to resolve key error */}
+            <select value={sharedPaymentStatus} onChange={e => setSharedPaymentStatus(e.target.value as PaymentStatus)} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent">{Object.values(PaymentStatus).map((s: string) => <option key={s} value={s}>{s}</option>)}</select>
           </div>
           <p className="text-center text-sm text-secondary mb-2 border-t border-b border-border py-2 flex-shrink-0">{t.enterPurchaseDetails}</p>
           <div className="flex-grow overflow-y-auto pr-2 space-y-3">

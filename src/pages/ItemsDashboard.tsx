@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import Chart from 'chart.js/auto';
 import { t } from '../translations';
 import { useShoppingStore } from '../store/useShoppingStore';
 import Header from '../components/common/Header';
@@ -50,7 +51,7 @@ const ItemTrendModal: React.FC<{ item: MasterItem, onClose: () => void }> = ({ i
   const [isAiLoading, setIsAiLoading] = useState(true);
 
   const chartRef = useRef<HTMLCanvasElement | null>(null);
-  const chartInstance = useRef<any | null>(null);
+  const chartInstance = useRef<Chart | null>(null);
 
   useEffect(() => { setIsOpen(true); }, []);
   
@@ -81,12 +82,10 @@ const ItemTrendModal: React.FC<{ item: MasterItem, onClose: () => void }> = ({ i
       const styles = getComputedStyle(document.documentElement);
       const accentColor = styles.getPropertyValue('--color-accent').trim();
       const accentSoftColor = styles.getPropertyValue('--color-accent-soft').trim();
-      const secondaryColor = styles.getPropertyValue('--color-secondary').trim();
 
       const ctx = chartRef.current.getContext('2d');
       if (ctx) {
-// FIX: Cannot find name 'Chart'. Access Chart from the window object.
-        chartInstance.current = new (window as any).Chart(ctx, {
+        chartInstance.current = new Chart(ctx, {
             type: 'line',
             data: {
               labels: history.map(p => toJalaliDateString(p.date)),
@@ -188,64 +187,4 @@ const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack, onLogout }) => 
                       <h2 className="text-lg font-bold text-primary mb-1">{item.name}</h2>
                       <p className="text-sm text-secondary mb-3">{item.category} / {item.unit}</p>
                       
-                       <div className="space-y-3 border-t border-border pt-3 text-sm">
-                            <div className="flex justify-between items-center">
-                                <span className="text-secondary">{t.lastPrice}:</span>
-                                <CurrencyDisplay value={item.lastPricePerUnit} className="font-semibold text-primary" />
-                            </div>
-                             <div className="flex justify-between items-center">
-                                <span className="text-secondary">{t.totalQuantity}:</span>
-                                <span className="font-semibold text-primary">{item.totalQuantity.toLocaleString('fa-IR')} {item.unit}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-secondary">{t.totalSpend}:</span>
-                                 <CurrencyDisplay value={item.totalSpend} className="font-semibold text-accent" />
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-secondary">{t.totalPurchases}:</span>
-                                <span className="font-semibold text-primary">{item.purchaseCount.toLocaleString('fa-IR')}</span>
-                            </div>
-                       </div>
-
-                        <div className="mt-4 pt-4 border-t border-border">
-                          <h4 className="text-xs font-bold text-secondary uppercase tracking-wider mb-1">{t.priceTrend}</h4>
-                          <div className="h-8">
-                            {priceHistory.length > 1 ? (
-                              <Sparkline data={priceHistory.map(p => p.pricePerUnit)} />
-                            ) : (
-                              <div className="h-full flex items-center justify-center bg-background rounded-md">
-                                <p className="text-xs text-secondary">{t.notEnoughDataForTrend}</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                    </div>
-                    <div className="p-2 border-t border-border flex justify-end gap-2 items-center">
-                        {priceHistory.length > 1 && (
-                            <button onClick={() => setAnalyzedItem(item)} className="px-2 py-1 text-xs text-accent hover:bg-accent/10 rounded-md font-medium">{t.analyzeTrend}</button>
-                        )}
-                        <button onClick={() => setModalState({ open: true, item })} className="p-1.5 text-secondary hover:text-primary"><EditIcon/></button>
-                    </div>
-                  </div>
-                )
-            })}
-          </div>
-        )}
-      </main>
-      {modalState.open && (
-        <EditItemMasterModal
-          itemToEdit={modalState.item!}
-          onClose={() => setModalState({ open: false })}
-        />
-      )}
-      {analyzedItem && (
-        <ItemTrendModal
-            item={analyzedItem}
-            onClose={() => setAnalyzedItem(null)}
-        />
-      )}
-    </>
-  );
-};
-
-export default ItemsDashboard;
+                       <div className="space-y-3 border-t border-border

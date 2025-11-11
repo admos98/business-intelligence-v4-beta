@@ -8,8 +8,9 @@ import { generateExecutiveSummary } from '../lib/gemini';
 import SkeletonLoader from '../components/common/SkeletonLoader';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import { useToast } from '../components/common/Toast';
+// FIX: Replace declare with import for Chart.js
+import { Chart } from 'chart.js/auto';
 
-declare var Chart: any;
 
 type Period = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
 
@@ -114,7 +115,8 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout, o
   const lineChartOptions = useMemo(() => ({
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { intersect: false, mode: 'index' },
+      // FIX: Cast interaction mode to const to fix type error
+      interaction: { intersect: false, mode: 'index' as const },
       scales: {
           x: { 
               ticks: { 
@@ -159,7 +161,8 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout, o
       maintainAspectRatio: false,
       plugins: { 
           legend: { 
-              position: 'right', 
+              // FIX: Cast legend position to const to fix type error
+              position: 'right' as const, 
               labels: { font: { family: "'Vazirmatn', sans-serif" }} 
           },
           tooltip: {

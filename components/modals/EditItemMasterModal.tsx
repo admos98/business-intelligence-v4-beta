@@ -62,7 +62,8 @@ const EditItemMasterModal: React.FC<EditItemMasterModalProps> = ({ onClose, item
            <div>
             <label className="block text-sm font-medium text-secondary mb-1">{t.unit}</label>
             <select value={unit} onChange={e => setUnit(e.target.value as Unit)} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent">
-                {Object.values(Unit).map(u => <option key={u} value={u}>{u}</option>)}
+                {/* FIX: Add explicit type to map callback to resolve key error */}
+                {Object.values(Unit).map((u: string) => <option key={u} value={u}>{u}</option>)}
             </select>
           </div>
           <div className="mt-6 flex justify-end gap-3">

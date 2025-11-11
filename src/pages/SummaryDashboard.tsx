@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import Chart from 'chart.js/auto';
 import Header from '../components/common/Header';
 import Card from '../components/common/Card';
 import { t } from '../translations';
@@ -38,9 +39,9 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
   const [isUpdating, setIsUpdating] = useState(false);
 
   const spendingTimeChartRef = useRef<HTMLCanvasElement | null>(null);
-  const spendingTimeChartInstance = useRef<any | null>(null);
+  const spendingTimeChartInstance = useRef<Chart | null>(null);
   const spendingCategoryChartRef = useRef<HTMLCanvasElement | null>(null);
-  const spendingCategoryChartInstance = useRef<any | null>(null);
+  const spendingCategoryChartInstance = useRef<Chart | null>(null);
 
   useEffect(() => {
     setIsUpdating(true);
@@ -111,7 +112,8 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
   const lineChartOptions = useMemo(() => ({
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { intersect: false, mode: 'index' },
+      // FIX: Cast interaction mode to const to fix type error
+      interaction: { intersect: false, mode: 'index' as const },
       scales: {
           x: { 
               ticks: { 
@@ -156,7 +158,8 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
       maintainAspectRatio: false,
       plugins: { 
           legend: { 
-              position: 'right', 
+              // FIX: Cast legend position to const to fix type error
+              position: 'right' as const, 
               labels: { font: { family: "'Vazirmatn', sans-serif" }} 
           },
           tooltip: {
@@ -189,8 +192,7 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
       
       const ctx = spendingTimeChartRef.current.getContext('2d');
       if (ctx) {
-// FIX: Cannot find name 'Chart'. Access Chart from the window object.
-        spendingTimeChartInstance.current = new (window as any).Chart(ctx, {
+        spendingTimeChartInstance.current = new Chart(ctx, {
           type: 'line',
           data: {
             labels: summaryData.charts.spendingOverTime.labels,
@@ -203,7 +205,7 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
               tension: 0.3,
             }],
           },
-          options: lineChartOptions,
+          options: lineChartOptions as any, // Cast to any to avoid complex chart.js option types
         });
       }
     }
@@ -223,8 +225,7 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
 
       const ctx = spendingCategoryChartRef.current.getContext('2d');
       if (ctx) {
-// FIX: Cannot find name 'Chart'. Access Chart from the window object.
-        spendingCategoryChartInstance.current = new (window as any).Chart(ctx, {
+        spendingCategoryChartInstance.current = new Chart(ctx, {
           type: 'doughnut',
           data: {
             labels: summaryData.charts.spendingByCategory.labels,
@@ -235,7 +236,7 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
               borderWidth: 0,
             }],
           },
-          options: doughnutChartOptions,
+          options: doughnutChartOptions as any, // Cast to any to avoid complex chart.js option types
         });
       }
     }
@@ -296,7 +297,7 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout })
 
   return (
     <>
-      <Header title={t.executiveSummary} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout}>
+      <Header title={t.executiveSummary} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout} onOpenSettings={onOpenSettings}>
         <button
           onClick={handleExportJson}
           disabled={!summaryData}
