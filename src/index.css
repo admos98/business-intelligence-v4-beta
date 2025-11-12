@@ -1,4 +1,59 @@
 /* src/index.css */
+
+@layer base {
+  /* Define CSS Variables */
+  :root {
+    --font-sans: 'Vazirmatn', 'sans-serif';
+  }
+
+  /* Light Theme */
+  .theme-light {
+    --color-background: #F8F9FA;
+    --color-surface: #FFFFFF;
+    --color-primary: #212529;
+    --color-secondary: #6C757D;
+    --color-accent: #0D6EFD;
+    --color-accent-soft: #0D6EFD26;
+    --color-accent-text: #FFFFFF;
+    --color-danger: #DC3545;
+    --color-danger-soft: #F8D7DA;
+    --color-success: #198754;
+    --color-success-soft: #D1E7DD;
+    --color-border: #E9ECEF;
+    --logo-bg: #212529;
+    --logo-fg: #FFFFFF;
+    --color-chart-1: #0D6EFD;
+    --color-chart-2: #6C757D;
+    --color-chart-3: #198754;
+    --color-chart-4: #FFC107;
+    --color-chart-5: #0DCAF0;
+  }
+
+  /* Dark Theme */
+  .theme-dark {
+    --color-background: #121212;
+    --color-surface: #1E1E1E;
+    --color-primary: #E9ECEF;
+    --color-secondary: #ADB5BD;
+    --color-accent: #0DCAF0;
+    --color-accent-soft: #0DCAF026;
+    --color-accent-text: #121212;
+    --color-danger: #F28B82;
+    --color-danger-soft: rgba(242, 139, 130, 0.15);
+    --color-success: #81C995;
+    --color-success-soft: rgba(129, 201, 149, 0.15);
+    --color-border: #343A40;
+    --logo-bg: #E9ECEF;
+    --logo-fg: #121212;
+    --color-chart-1: #0DCAF0;
+    --color-chart-2: #ADB5BD;
+    --color-chart-3: #81C995;
+    --color-chart-4: #FDD663;
+    --color-chart-5: #A370F7;
+  }
+}
+
+/* Keep the Tailwind directives AFTER the variables */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

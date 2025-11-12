@@ -5,74 +5,30 @@
     <link id="favicon" rel="icon" type="image/svg+xml" href="" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>هوش تجاری کافه مهرنوش</title>
-    <script>
-      // Theme loader script to prevent FOUC
-      (function() {
-        const theme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-        document.documentElement.className = `theme-${theme}`;
-      })();
-    </script>
-    <style>
-      /* Base styles */
-      :root {
-        --font-sans: 'Vazirmatn', 'sans-serif';
+  <script>
+    (function() {
+      // This IIFE (Immediately Invoked Function Expression) runs instantly.
+      const root = document.documentElement; // This is the <html> tag
+      try {
+        const savedTheme = localStorage.getItem('theme');
+
+        if (savedTheme === 'dark') {
+          root.classList.add('theme-dark');
+        } else if (savedTheme === 'light') {
+          root.classList.add('theme-light');
+        } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          // If no theme is saved, check the user's OS preference.
+          root.classList.add('theme-dark');
+        } else {
+          // Default to light theme if nothing else matches.
+          root.classList.add('theme-light');
+        }
+      } catch (e) {
+        // Fallback in case of errors (e.g., localStorage not available)
+        root.classList.add('theme-light');
       }
-      /* Light Theme */
-      .theme-light {
-        --color-background: #F8F9FA; /* Very light grey */
-        --color-surface: #FFFFFF;    /* White */
-        --color-primary: #212529;   /* Dark Grey for text */
-        --color-secondary: #6C757D;  /* Muted Grey for text */
-        --color-accent: #0D6EFD;     /* Bootstrap Blue */
-        --color-accent-soft: #0D6EFD26;
-        --color-accent-text: #FFFFFF;
-        --color-danger: #DC3545;
-        --color-danger-soft: #F8D7DA;
-        --color-success: #198754;
-        --color-success-soft: #D1E7DD;
-        --color-border: #E9ECEF; /* Lighter border */
-        --logo-bg: #212529;
-        --logo-fg: #FFFFFF;
-        --color-chart-1: #0D6EFD;
-        --color-chart-2: #6C757D;
-        --color-chart-3: #198754;
-        --color-chart-4: #FFC107;
-        --color-chart-5: #0DCAF0;
-      }
-      /* Dark Theme */
-      .theme-dark {
-        --color-background: #121212; /* Almost black */
-        --color-surface: #1E1E1E;    /* Dark Grey */
-        --color-primary: #E9ECEF;    /* Light Grey for text */
-        --color-secondary: #ADB5BD;  /* Muted light grey */
-        --color-accent: #0DCAF0;     /* Cyan */
-        --color-accent-soft: #0DCAF026;
-        --color-accent-text: #121212;
-        --color-danger: #F28B82;     /* Lighter red */
-        --color-danger-soft: rgba(242, 139, 130, 0.15);
-        --color-success: #81C995;    /* Lighter green */
-        --color-success-soft: rgba(129, 201, 149, 0.15);
-        --color-border: #343A40;     /* Darker border */
-        --logo-bg: #E9ECEF;
-        --logo-fg: #121212;
-        --color-chart-1: #0DCAF0;
-        --color-chart-2: #ADB5BD;
-        --color-chart-3: #81C995;
-        --color-chart-4: #FDD663;
-        --color-chart-5: #A370F7;
-      }
-      /* Animation Keyframes */
-      @keyframes fade-in {
-          0% { opacity: 0; }
-          100% { opacity: 1; }
-      }
-      @keyframes fade-in-down {
-          0% { opacity: 0; transform: translateY(-10px); }
-          100% { opacity: 1; transform: translateY(0); }
-      }
-      .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
-      .animate-fade-in-down { animation: fade-in-down 0.3s ease-out forwards; }
-    </style>
+    })();
+  </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700&display=swap" rel="stylesheet">
