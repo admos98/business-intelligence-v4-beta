@@ -37,10 +37,11 @@ export async function generateReportSummary(
     return callGeminiApi('generateReportSummary', { totalSpending, categorySpending });
 }
 
+// AFTER (Correct)
 export async function generateExecutiveSummary(summaryData: SummaryData): Promise<string> {
-    return callGeminiApi('generateExecutiveSummary', { summaryData });
+    // Pass the summaryData object directly as the payload
+    return callGeminiApi('generateExecutiveSummary', summaryData);
 }
-
 export async function analyzePriceTrend(
     itemName: string,
     priceHistory: { date: string, pricePerUnit: number }[]
