@@ -55,7 +55,7 @@ export const t = {
   listNamePlaceholder: "مثلاً خریدهای هفتگی، لوازم قنادی",
   cancel: "انصراف",
   create: "ایجاد",
-  
+
   // Toasts
   listCreated: "لیست جدید با موفقیت ایجاد شد.",
   listUpdated: "لیست با موفقیت به‌روزرسانی شد.",
@@ -106,7 +106,7 @@ export const t = {
   predictingCategory: "در حال پیشبینی دسته‌بندی...",
   markAsPaid: "پرداخت شد",
   receipts: "رسیدها",
-  
+
   // Price Estimation
   estimatedPrice: "قیمت تخمینی",
   totalEstimatedCost: "جمع کل تخمینی",
@@ -120,7 +120,7 @@ export const t = {
   receipt: "رسید",
   paymentMethod: "روش پرداخت",
   paymentStatus: "وضعیت پرداخت",
-  
+
   // Edit Item Modal
   editItemTitle: "ویرایش قلم",
   editPurchasedItemTitle: "ویرایش قلم خریداری شده",
@@ -175,7 +175,7 @@ export const t = {
   ocrDatePlaceholder: "YYYY/MM/DD",
   paymentDetails: "جزئیات پرداخت",
   tomanEquivalent: (amount: string) => `معادل ${amount} تومان`,
-  
+
   // Insights Hub (Analysis Dashboard)
   insightsHub: "مرکز تحلیل و هوش",
   overview: "نمای کلی",
@@ -217,7 +217,7 @@ export const t = {
   priceIncrease: (percent: string) => `افزایش ${percent}%`,
   priceDecrease: (percent: string) => `کاهش ${percent}%`,
   generatingInflationData: "در حال محاسبه نرخ تورم...",
-  
+
   // Expense Forecasting
   expenseForecast: "پیش‌بینی هزینه‌ها",
   avgDailyExpense: "میانگین هزینه روزانه",
@@ -226,9 +226,8 @@ export const t = {
 
   // Smart Suggestions
   todaysSmartSuggestions: "پیشنهادهای هوشمند امروز",
-  suggestionReasonCycle: (days: number) => `زمان خرید است. شما معمولاً هر ${days} روز یکبار این قلم را می‌خرید.`,
-  suggestionReasonGettingLow: (days: number) => `موجودی رو به اتمام است. میانگین دوره خرید شما ${days} روز است.`,
-  suggestionReasonDepleted: (cycle: number, depleted: number) => `موجودی تمام شده. بر اساس دوره خرید ${cycle} روزه, این قلم حدود ${depleted} روز پیش تمام شده.`,
+  suggestionReasonStockLow: (stock: number, unit: string, days: number) => `موجودی کم است (حدود ${stock.toFixed(1)} ${unit}). این مقدار تقریباً برای ${days} روز آینده کافی است.`,
+  suggestionReasonDepleted: `موجودی این کالا احتمالاً تمام شده است.`,
   suggestionReasonInflation: (percent: string) => `هشدار قیمت! قیمت این کالا اخیراً ${percent}% افزایش یافته. خرید یا بررسی جایگزین توصیه می‌شود.`,
   noSuggestions: "هیچ پیشنهاد هوشمندی برای امروز وجود ندارد.",
 
@@ -246,7 +245,7 @@ export const t = {
   addVendorTitle: "افزودن تامین‌کننده جدید",
   editVendorTitle: "ویرایش اطلاعات تامین‌کننده",
   confirmDeleteVendor: (name: string) => `آیا از حذف تامین‌کننده «${name}» مطمئن هستید؟ خریدهای ثبت شده با این تامین‌کننده حذف نخواهند شد.`,
-  
+
   // Item Management
   itemsDashboardTitle: "مدیریت اقلام",
   noItemsYet: "هنوز هیچ قلم خریدی ثبت نشده است.",
