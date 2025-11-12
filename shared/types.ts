@@ -61,7 +61,7 @@ export interface ShoppingItem {
   amount: number;
   unit: Unit;
   status: ItemStatus;
-  category: string; 
+  category: string;
   paidPrice?: number;
   purchasedAmount?: number;
   vendorId?: string;
@@ -103,17 +103,15 @@ export interface OcrResult {
 }
 
 
-export interface RestockSuggestion {
-    name: string;
-    unit: Unit;
-    category: string;
-    lastPurchaseDate: string;
-    avgPurchaseCycleDays: number;
-}
-
-export interface SmartSuggestion extends RestockSuggestion {
-    reason: string;
-    priority: 'high' | 'medium' | 'low';
+// shared/types.ts
+export interface SmartSuggestion {
+  name: string;
+  unit: Unit;
+  category: string;
+  lastPurchaseDate: string;
+  avgPurchaseCycleDays?: number; // <-- Now optional!
+  reason: string;
+  priority: 'high' | 'medium' | 'low';
 }
 
 

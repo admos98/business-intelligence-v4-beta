@@ -639,7 +639,6 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             .filter(item => item.status === ItemStatus.Bought && item.purchasedAmount && item.purchasedAmount > 0)
             .sort((a, b) => a.purchaseDate.getTime() - b.purchaseDate.getTime());
 
-        // The history now tracks both date and amount for each purchase.
         const itemHistory = new Map<string, {
             purchases: { date: Date, amount: number }[],
             name: string,
@@ -656,25 +655,26 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         });
 
         const suggestions: SmartSuggestion[] = [];
-        const today = new Date(new Date().setHours(0, 0, 0, 0)); // Start of today for consistent comparison
+        const today = new Date(new Date().setHours(0, 0, 0, 0));
         const oneDay = 24 * 60 * 60 * 1000;
-        const REORDER_BUFFER_DAYS = 3; // Suggest reordering when stock is below 3 days' worth.
+        const REORDER_BUFFER_DAYS = 3; // Suggest reordering when stock is below 3 days' worth of supply.
 
         itemHistory.forEach((history) => {
-            // We need at least two purchases to calculate a consumption rate.
+            // We need at least two purchases to calculate a meaningful consumption rate.
             if (history.purchases.length < 2) return;
 
             const firstPurchase = history.purchases[0];
             const lastPurchase = history.purchases[history.purchases.length - 1];
 
             const totalQuantityPurchased = history.purchases.reduce((sum, p) => sum + p.amount, 0);
-            const totalDurationDays = Math.round((lastPurchase.date.getTime() - firstPurchase.date.getTime()) / oneDay);
+            // Ensure the duration is at least 1 day to avoid division by zero and get a rate for items bought frequently.
+            const totalDurationDays = Math.max(1, Math.round((lastPurchase.date.getTime() - firstPurchase.date.getTime()) / oneDay));
 
-            // Avoid division by zero if all purchases were on the same day.
-            if (totalDurationDays <= 0) return;
-
-            // --- Core Logic ---
             const dailyConsumptionRate = totalQuantityPurchased / totalDurationDays;
+
+            // If the consumption rate is zero, we can't make a prediction.
+            if (dailyConsumptionRate <= 0) return;
+
             const daysSinceLastPurchase = Math.round((today.getTime() - lastPurchase.date.getTime()) / oneDay);
             const consumedAmount = dailyConsumptionRate * daysSinceLastPurchase;
             const estimatedCurrentStock = Math.max(0, lastPurchase.amount - consumedAmount);
@@ -682,35 +682,32 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             const reorderPointQuantity = dailyConsumptionRate * REORDER_BUFFER_DAYS;
 
             if (estimatedCurrentStock <= 0) {
-                // HIGH priority: You've likely run out.
                 suggestions.push({
-                    name: history.name,
-                    unit: history.unit,
-                    category: history.category,
+                    name: history.name, unit: history.unit, category: history.category,
                     lastPurchaseDate: lastPurchase.date.toISOString(),
-                    avgPurchaseCycleDays: 0, // Not relevant in this model
                     reason: t.suggestionReasonDepleted,
                     priority: 'high'
                 });
             } else if (estimatedCurrentStock <= reorderPointQuantity) {
-                // MEDIUM priority: Stock is getting low.
-                const daysLeft = Math.round(estimatedCurrentStock / dailyConsumptionRate);
+                const daysLeft = Math.ceil(estimatedCurrentStock / dailyConsumptionRate); // Use ceil to be conservative
                 suggestions.push({
-                    name: history.name,
-                    unit: history.unit,
-                    category: history.category,
+                    name: history.name, unit: history.unit, category: history.category,
                     lastPurchaseDate: lastPurchase.date.toISOString(),
-                    avgPurchaseCycleDays: 0,
                     reason: t.suggestionReasonStockLow(estimatedCurrentStock, history.unit, daysLeft),
                     priority: 'medium'
                 });
             }
-            // Optional: You could add a 'low' priority suggestion based on the old time-based logic as a fallback.
         });
 
-        // Return the most urgent suggestions first.
-        return suggestions.sort((a,b) => b.priority.localeCompare(a.priority));
+        return suggestions.sort((a,b) => {
+            // Sort by priority first, then by how low the stock is (more urgent first)
+            if (a.priority > b.priority) return -1;
+            if (a.priority < b.priority) return 1;
+            // You could add a secondary sort key here if needed
+            return 0;
+        });
       },
+
       getPendingPayments: () => {
           const pending: PendingPaymentItem[] = [];
           get().lists.forEach(list => {
