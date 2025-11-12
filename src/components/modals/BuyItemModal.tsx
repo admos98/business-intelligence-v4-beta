@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 // FIX: Add .ts extension to fix module import errors
-import { ShoppingItem, PaymentMethod, PaymentStatus } from '../../types.ts';
-import { t } from '../../translations.ts';
+import { ShoppingItem, PaymentMethod, PaymentStatus } from '../../../shared/types.ts';
+import { t } from '../../../shared/translations.ts';
 import CurrencyDisplay from '../common/CurrencyDisplay';
 // FIX: Add .ts extension to fix module import errors
 import { useShoppingStore } from '../../store/useShoppingStore.ts';

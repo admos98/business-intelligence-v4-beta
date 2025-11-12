@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 // FIX: Add .ts extension to fix module import errors
-import { AggregatedShoppingItem, ItemStatus, PaymentStatus } from '../../types.ts';
-import { t } from '../../translations.ts';
+import { AggregatedShoppingItem, ItemStatus, PaymentStatus } from '../../../shared/types.ts';
+import { t } from '../../../shared/translations.ts';
 import { useShoppingStore } from '../../store/useShoppingStore.ts';
 import CurrencyDisplay from '../common/CurrencyDisplay';
-import { parseJalaliDate, toJalaliDateString } from '../../lib/jalali';
+import { parseJalaliDate, toJalaliDateString } from '../../../shared/jalali.ts';
 // FIX: Add .ts extension to fix module import errors
 import { generateReportSummary } from '../../lib/gemini.ts';
 import JalaliCalendar from '../common/JalaliCalendar';
@@ -38,7 +38,7 @@ const ReportsModal: React.FC<ReportsModalProps> = ({ onClose }) => {
   const vendorMap = useMemo(() => new Map<string, string>(vendors.map(v => [v.id, v.name])), [vendors]);
 
   useEffect(() => { setIsOpen(true); }, []);
-  
+
   const handleClose = () => {
     setIsOpen(false);
     setTimeout(onClose, 300);
@@ -49,7 +49,7 @@ const ReportsModal: React.FC<ReportsModalProps> = ({ onClose }) => {
     setIsStartCalendarOpen(false);
     setReportData(null);
   };
-  
+
   const handleEndDateSelect = (date: Date) => {
     setEndDate(toJalaliDateString(date.toISOString()));
     setIsEndCalendarOpen(false);
@@ -60,10 +60,10 @@ const ReportsModal: React.FC<ReportsModalProps> = ({ onClose }) => {
     const start = parseJalaliDate(startDate);
     const end = parseJalaliDate(endDate);
     if (!start || !end) return;
-    
+
     setIsGeneratingData(true);
     setReportData(null);
-    
+
     setTimeout(() => {
       start.setHours(0, 0, 0, 0);
       end.setHours(23, 59, 59, 999);
@@ -75,15 +75,15 @@ const ReportsModal: React.FC<ReportsModalProps> = ({ onClose }) => {
           if (item.status === ItemStatus.Bought) {
             const key = `${item.name}|${item.unit}|${item.vendorId || 'N/A'}|${item.paymentStatus || 'N/A'}|${item.paymentMethod || 'N/A'}`;
             if (!aggregationMap.has(key)) {
-              aggregationMap.set(key, { 
-                  name: item.name, 
-                  unit: item.unit, 
+              aggregationMap.set(key, {
+                  name: item.name,
+                  unit: item.unit,
                   category: item.category || t.other,
                   vendorId: item.vendorId,
                   paymentStatus: item.paymentStatus,
                   paymentMethod: item.paymentMethod,
-                  totalAmount: 0, 
-                  totalPrice: 0 
+                  totalAmount: 0,
+                  totalPrice: 0
               });
             }
             const existing = aggregationMap.get(key)!;
@@ -91,7 +91,7 @@ const ReportsModal: React.FC<ReportsModalProps> = ({ onClose }) => {
             existing.totalPrice += item.paidPrice ?? 0;
           }
       }));
-      
+
       const aggregatedData = Array.from(aggregationMap.values()).map(item => ({...item, purchaseHistory: []}));
       if (aggregatedData.length === 0) {
           addToast(t.noDataForPeriod, "info");
@@ -128,7 +128,7 @@ const ReportsModal: React.FC<ReportsModalProps> = ({ onClose }) => {
   const handleDownloadPdf = async () => {
     if (!reportData) return;
     setIsGeneratingPdf(true);
-    
+
     let summary = '';
     if (includeAiAnalysis) {
         try {
@@ -137,18 +137,18 @@ const ReportsModal: React.FC<ReportsModalProps> = ({ onClose }) => {
                 acc[item.category] = (acc[item.category] || 0) + item.totalPrice;
                 return acc;
             }, {} as Record<string, number>);
-            
+
             summary = await generateReportSummary(totalSpending, categorySpending);
         } catch (e) {
             summary = t.aiSummaryError;
         }
     }
-    
+
     try {
         const start = parseJalaliDate(startDate)!;
         const end = parseJalaliDate(endDate)!;
         const reportComponent = (
-            <PeriodicReportForPdf 
+            <PeriodicReportForPdf
                 startDate={startDate}
                 endDate={endDate}
                 aiSummary={summary}
@@ -216,14 +216,14 @@ const ReportsModal: React.FC<ReportsModalProps> = ({ onClose }) => {
           </div>
           <button onClick={handleGenerateData} disabled={isGeneratingData || !startDate || !endDate} className="self-end w-full px-4 py-2 bg-accent text-accent-text font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">{isGeneratingData ? t.loadingData : t.generateReport}</button>
         </div>
-        
+
         <div className="flex-grow overflow-y-auto pr-2 flex items-center justify-center">
             {isGeneratingData ? (
                 <p className="text-center text-secondary">{t.loadingData}</p>
             ) : reportData ? (
                  <div className="text-center w-full max-w-md mx-auto">
                     <h3 className="text-lg font-bold text-primary mb-4">{t.reportReady}</h3>
-                    
+
                     <div className="p-4 bg-background rounded-lg mb-4 border border-border">
                         <div className="grid grid-cols-2 gap-4">
                             <div>
@@ -271,7 +271,7 @@ const PeriodicReportForPdf: React.FC<{
 }> = ({ startDate, endDate, aiSummary, groupedReportData, vendorMap, totalCostForPeriod, totalOutstandingDue }) => (
     <div className="p-10 pdf-render-container" style={{ direction: 'rtl' }}>
         <h1 className="text-3xl font-bold text-center mb-4">{t.aggregatedReportForPeriod(startDate, endDate)}</h1>
-        
+
         {aiSummary && (
             <div className="mb-8 p-4 bg-gray-50 rounded-lg">
                 <h2 className="text-2xl font-bold mb-4 border-b pb-2">{t.aiSummary}</h2>

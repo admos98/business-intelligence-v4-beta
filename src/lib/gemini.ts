@@ -1,4 +1,4 @@
-import { OcrResult, SummaryData, InflationData } from "../types";
+import { OcrResult, SummaryData, InflationData } from "../../shared/types";
 
 async function callGeminiApi(task: string, payload: any) {
     const response = await fetch('/api/gemini', {

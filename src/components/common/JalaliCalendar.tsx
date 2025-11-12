@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 // FIX: Add .ts extension to fix module import error
-import { t } from '../../translations.ts';
-import { gregorianToJalali, getDaysInJalaliMonth, getFirstDayOfWeekJalali, jalaliToGregorian } from '../../lib/jalali';
+import { t } from '../../../shared/translations.ts';
+import { gregorianToJalali, getDaysInJalaliMonth, getFirstDayOfWeekJalali, jalaliToGregorian } from '../../../shared/jalali.ts';
 
 interface JalaliCalendarProps {
   selectedDate: Date;
@@ -12,10 +12,10 @@ interface JalaliCalendarProps {
 const JalaliCalendar: React.FC<JalaliCalendarProps> = ({ selectedDate, onSelectDate, isEmbedded = false }) => {
   const [displayDate, setDisplayDate] = useState(selectedDate);
   const [currentJalaliYear, currentJalaliMonth] = useMemo(() => gregorianToJalali(displayDate.getFullYear(), displayDate.getMonth() + 1, displayDate.getDate()), [displayDate]);
-  
+
   const daysInMonth = getDaysInJalaliMonth(currentJalaliYear, currentJalaliMonth);
   const firstDayOfWeek = getFirstDayOfWeekJalali(currentJalaliYear, currentJalaliMonth);
-  
+
   const [selectedJalaliYear, selectedJalaliMonth, selectedJalaliDay] = useMemo(() => gregorianToJalali(selectedDate.getFullYear(), selectedDate.getMonth() + 1, selectedDate.getDate()), [selectedDate]);
 
   const handleMonthChange = (offset: number) => {
@@ -34,12 +34,12 @@ const JalaliCalendar: React.FC<JalaliCalendarProps> = ({ selectedDate, onSelectD
     }
     setDisplayDate(newDate);
   };
-  
+
   const handleDayClick = (day: number) => {
     const [gYear, gMonth, gDay] = jalaliToGregorian(currentJalaliYear, currentJalaliMonth, day);
     onSelectDate(new Date(Date.UTC(gYear, gMonth - 1, gDay)));
   };
-  
+
   const renderDays = () => {
     const days = [];
     // empty cells
@@ -64,8 +64,8 @@ const JalaliCalendar: React.FC<JalaliCalendarProps> = ({ selectedDate, onSelectD
     }
     return days;
   };
-  
-  const calendarClasses = isEmbedded 
+
+  const calendarClasses = isEmbedded
     ? ""
     : "absolute top-full right-0 mt-2 bg-background border border-border rounded-xl p-4 z-30 w-full animate-fade-in-down";
 

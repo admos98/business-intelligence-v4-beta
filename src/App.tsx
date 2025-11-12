@@ -9,7 +9,7 @@ import LoginPage from './pages/LoginPage';
 import { ToastProvider } from './components/common/Toast';
 import { useTheme } from './hooks/useTheme';
 import { useShoppingStore } from './store/useShoppingStore';
-import { t } from './translations';
+import { t } from '../shared/translations';
 import { logoSvg } from './assets/logo';
 
 type View = 'dashboard' | 'list' | 'analysis' | 'vendors' | 'summary' | 'items';
@@ -36,7 +36,7 @@ const App: React.FC = () => {
     setActiveListId(null);
     setView(targetView);
   };
-  
+
   const handleLogout = () => {
     logout();
     setView('dashboard'); // Reset to default view on logout
@@ -88,7 +88,7 @@ const App: React.FC = () => {
         );
     }
   };
-  
+
   if (!currentUser) {
     return (
       <ToastProvider>

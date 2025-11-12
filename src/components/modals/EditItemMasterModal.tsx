@@ -1,8 +1,8 @@
 // src/components/modals/EditItemMasterModal.tsx
 
 import React, { useState, useEffect } from 'react';
-import { t } from '../../translations.ts';
-import { MasterItem, Unit } from '../../types.ts';
+import { t } from '../../../shared/translations.ts';
+import { MasterItem, Unit } from '../../../shared/types.ts';
 // FIX: Corrected the path by adding the missing slash.
 import { useShoppingStore } from '../../store/useShoppingStore.ts';
 // FIX: Corrected the path to be relative to the current file location.

@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { t } from '../translations';
+import { t } from '../../shared/translations';
 import { useShoppingStore } from '../store/useShoppingStore';
 import Header from '../components/common/Header';
-import { Vendor, ItemStatus } from '../types';
+import { Vendor, ItemStatus } from '../../shared/types';
 import VendorModal from '../components/modals/VendorModal';
 import ConfirmModal from '../components/modals/ConfirmModal';
 import { useToast } from '../components/common/Toast';

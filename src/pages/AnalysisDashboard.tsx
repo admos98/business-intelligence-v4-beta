@@ -5,14 +5,14 @@ import { Chart } from 'chart.js/auto';
 
 // --- CORRECTED IMPORTS ---
 // FIX: Changed 'Item' to 'ShoppingItem' as defined in your types.ts
-import { ItemStatus, InflationData, InflationDetail, ShoppingList, ShoppingItem, Vendor } from '../types.ts';
+import { ItemStatus, InflationData, InflationDetail, ShoppingList, ShoppingItem, Vendor } from '../../shared/types.ts';
 import Header from '../components/common/Header.tsx';
 import Card from '../components/common/Card.tsx';
 import SkeletonLoader from '../components/common/SkeletonLoader.tsx';
-import { t } from '../translations.ts';
+import { t } from '../../shared/translations.ts';
 import { useShoppingStore } from '../store/useShoppingStore.ts';
 import CurrencyDisplay from '../components/common/CurrencyDisplay.tsx';
-import { parseJalaliDate, toJalaliDateString } from '../lib/jalali.ts';
+import { parseJalaliDate, toJalaliDateString } from '../../shared/jalali.ts';
 // FIX: 'useToast' is unused, so it can be commented out or removed.
 // import { useToast } from '../components/common/Toast.tsx';
 

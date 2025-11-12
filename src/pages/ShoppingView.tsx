@@ -1,6 +1,6 @@
 import React, { useState, useMemo} from 'react';
-import { ShoppingList, ShoppingItem, Unit, ItemStatus, PaymentMethod, PaymentStatus, OcrResult } from '../types';
-import { t } from '../translations';
+import { ShoppingList, ShoppingItem, Unit, ItemStatus, PaymentMethod, PaymentStatus, OcrResult } from '../../shared/types';
+import { t } from '../../shared/translations';
 import Header from '../components/common/Header';
 import BuyItemModal from '../components/modals/BuyItemModal';
 import EditItemModal from '../components/modals/EditItemModal';

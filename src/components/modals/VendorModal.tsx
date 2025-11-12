@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 // FIX: Add .ts extension to fix module import errors
-import { t } from '../../translations.ts';
-import { Vendor } from '../../types.ts';
+import { t } from '../../../shared/translations.ts';
+import { Vendor } from '../../../shared/types.ts';
 import { useShoppingStore } from '../../store/useShoppingStore.ts';
 import { useToast } from '../common/Toast';
 
@@ -22,7 +22,7 @@ const VendorModal: React.FC<VendorModalProps> = ({ onClose, vendorToEdit }) => {
   const isEditing = !!vendorToEdit;
 
   useEffect(() => { setIsOpen(true); }, []);
-  
+
   const handleClose = () => {
     setIsOpen(false);
     setTimeout(onClose, 300);

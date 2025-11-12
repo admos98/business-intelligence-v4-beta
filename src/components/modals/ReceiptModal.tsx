@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 // FIX: Add .ts extension to fix module import error
-import { t } from '../../translations.ts';
+import { t } from '../../../shared/translations.ts';
 
 interface ReceiptModalProps {
   imageUrl: string;
@@ -12,7 +12,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ imageUrl, itemName, onClose
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => { setIsOpen(true); }, []);
-  
+
   const handleClose = () => {
     setIsOpen(false);
     setTimeout(onClose, 300);

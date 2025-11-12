@@ -1,13 +1,13 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { ShoppingList, ItemStatus, SmartSuggestion, PendingPaymentItem } from '../types';
+import { ShoppingList, ItemStatus, SmartSuggestion, PendingPaymentItem } from '../../shared/types';
 import Header from '../components/common/Header';
 import NewListModal from '../components/modals/NewListModal';
 import ConfirmModal from '../components/modals/ConfirmModal';
 import ReportsModal from '../components/modals/ReportsModal';
-import { t } from '../translations';
+import { t } from '../../shared/translations';
 import { useShoppingStore } from '../store/useShoppingStore';
 import { useToast } from '../components/common/Toast';
-import { toJalaliDateString, gregorianToJalali } from '../lib/jalali';
+import { toJalaliDateString, gregorianToJalali } from '../../shared/jalali';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import Card from '../components/common/Card';
 
@@ -38,7 +38,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
   const { addToast } = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; listId: string; listName: string; }>({ isOpen: false, listId: '', listName: '' });
   const [importConfirmOpen, setImportConfirmOpen] = useState(false);
-  
+
   const vendorMap = React.useMemo(() => new Map(vendors.map(v => [v.id, v.name])), [vendors]);
 
   const handleCreateAndOpenList = (date: Date) => {
@@ -47,7 +47,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
     setIsNewListModalOpen(false);
     onSelectList(listId);
   };
-  
+
   const handleAddItemFromSuggestion = (suggestion: SmartSuggestion) => {
     const wasAdded = addItemFromSuggestion(suggestion);
     if (wasAdded) {
@@ -83,7 +83,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
     reader.readAsText(file);
     if(event.target) event.target.value = '';
   };
-  
+
   const triggerImport = () => {
     importInputRef.current?.click();
   };
@@ -103,12 +103,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
   const handleDelete = (listId: string, listName: string) => {
     setDeleteConfirm({ isOpen: true, listId, listName });
   };
-  
+
   const confirmDelete = () => {
     deleteList(deleteConfirm.listId);
     addToast(t.listDeleted, 'info');
   };
-  
+
   const smartSuggestions = getSmartSuggestions();
   const pendingPayments = getPendingPayments();
   const expenseForecast = getExpenseForecast();
@@ -129,15 +129,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
     const today = new Date();
     const [currentJalaliYear, currentJalaliMonth] = gregorianToJalali(today.getUTCFullYear(), today.getUTCMonth() + 1, today.getUTCDate());
     const currentMonthKey = `${currentJalaliYear}-${currentJalaliMonth}`;
-    
+
     const current: ShoppingList[] = [];
     const pastGroups: Record<string, ShoppingList[]> = {};
-    
+
     filteredLists.forEach(list => {
       const listDate = new Date(list.createdAt);
       const [jy, jm] = gregorianToJalali(listDate.getUTCFullYear(), listDate.getUTCMonth() + 1, listDate.getUTCDate());
       const monthKey = `${jy}-${jm}`;
-      
+
       if (monthKey === currentMonthKey) {
         current.push(list);
       } else {
@@ -150,7 +150,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
 
     return { currentMonthLists: current, pastMonthsGroups: pastGroups };
   }, [filteredLists]);
-  
+
   useEffect(() => {
     if (searchQuery.trim()) {
       const newExpanded: Record<string, boolean> = {};
@@ -221,7 +221,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
                 </div>
             </Card>
         </div>
-        
+
         {pendingPayments.length > 0 && (
             <div>
                 <h2 className="text-xl font-bold text-primary mb-4">{t.pendingPayments}</h2>
@@ -234,7 +234,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
         <div className="flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center">
           <h1 className="text-2xl font-bold text-primary">{t.myShoppingLists}</h1>
            <div className="relative w-full md:max-w-sm">
-              <input 
+              <input
                   type="text"
                   placeholder={t.searchLists}
                   value={searchQuery}
@@ -274,15 +274,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
                     ))}
                 </div>
             )}
-            
+
             {Object.keys(pastMonthsGroups).sort().reverse().map(monthKey => {
                 const [year, month] = monthKey.split('-').map(Number);
                 const monthName = t.jalaliMonths[month - 1];
                 const isExpanded = expandedMonths[monthKey] || false;
-                
+
                 return (
                     <div key={monthKey}>
-                        <button 
+                        <button
                             onClick={() => toggleMonthExpansion(monthKey)}
                             className="w-full flex justify-between items-center p-3 bg-surface rounded-lg border border-border shadow-subtle mb-4"
                         >
@@ -330,7 +330,7 @@ const ListCard: React.FC<{list: ShoppingList, onSelect: (id: string) => void, on
     const boughtItems = list.items.filter(i => i.status === ItemStatus.Bought).length;
     const totalItems = list.items.length;
     const progress = totalItems > 0 ? (boughtItems / totalItems) * 100 : 0;
-    
+
     const getStatusPill = () => {
       if (totalItems > 0 && boughtItems === totalItems) {
         return <span className="text-xs font-medium px-2 py-1 bg-success-soft text-success rounded-full">{t.completed}</span>;
@@ -340,7 +340,7 @@ const ListCard: React.FC<{list: ShoppingList, onSelect: (id: string) => void, on
       }
       return <span className="text-xs font-medium px-2 py-1 bg-secondary/20 text-secondary rounded-full">{t.new}</span>;
     };
-    
+
     return (
       <div
         className="bg-surface rounded-xl border border-border flex flex-col group transition-all duration-300 hover:-translate-y-1 hover:shadow-glow shadow-card"

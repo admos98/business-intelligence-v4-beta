@@ -1,12 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { t } from '../translations.ts';
+import { t } from '../../shared/translations.ts';
 import { useShoppingStore } from '../store/useShoppingStore.ts';
 import Header from '../components/common/Header.tsx';
-import { MasterItem } from '../types.ts';
+import { MasterItem } from '../../shared/types.ts';
 import EditItemMasterModal from '../components/modals/EditItemMasterModal.tsx';
 import { useToast } from '../components/common/Toast.tsx';
 import CurrencyDisplay from '../components/common/CurrencyDisplay.tsx';
-import { toJalaliDateString } from '../lib/jalali.ts';
+import { toJalaliDateString } from '../../shared/jalali.ts';
 import Card from '../components/common/Card.tsx';
 import SkeletonLoader from '../components/common/SkeletonLoader.tsx';
 import { Chart } from 'chart.js/auto';

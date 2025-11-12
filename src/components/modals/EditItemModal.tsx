@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 // FIX: Add .ts extension to fix module import errors
-import { ShoppingItem, Unit } from '../../types.ts';
-import { t } from '../../translations.ts';
+import { ShoppingItem, Unit } from '../../../shared/types.ts';
+import { t } from '../../../shared/translations.ts';
 import { useShoppingStore } from '../../store/useShoppingStore.ts';
 
 interface EditItemModalProps {

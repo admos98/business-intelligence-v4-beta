@@ -2,9 +2,9 @@
 
 import { create } from 'zustand';
 // FIX: Removed unused 'User' type
-import { ShoppingList, ShoppingItem, CafeCategory, Vendor, OcrResult, Unit, ItemStatus, PaymentStatus, PaymentMethod, PendingPaymentItem, SmartSuggestion, SummaryData, RecentPurchaseItem, MasterItem, AuthSlice, ShoppingState, InflationData, InflationDetail, InflationPoint } from '../types';
-import { t } from '../translations';
-import { parseJalaliDate, toJalaliDateString, gregorianToJalali } from '../lib/jalali';
+import { ShoppingList, ShoppingItem, CafeCategory, Vendor, OcrResult, Unit, ItemStatus, PaymentStatus, PaymentMethod, PendingPaymentItem, SmartSuggestion, SummaryData, RecentPurchaseItem, MasterItem, AuthSlice, ShoppingState, InflationData, InflationDetail, InflationPoint } from '../../shared/types.ts';
+import { t } from '../../shared/translations.ts';
+import { parseJalaliDate, toJalaliDateString, gregorianToJalali } from '../../shared/jalali.ts';
 // FIX: Added .ts extension to resolve module path ambiguity.
 import { fetchData, saveData } from '../lib/api.ts';
 

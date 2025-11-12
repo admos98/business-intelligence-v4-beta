@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 // FIX: Add .ts extension to fix module import error
-import { t } from '../../translations.ts';
+import { t } from '../../../shared/translations.ts';
 
 interface ConfirmModalProps {
   isOpen: boolean;

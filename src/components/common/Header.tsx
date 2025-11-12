@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../hooks/useTheme';
 import ThemeToggleButton from './ThemeToggleButton';
 import { logoSvg } from '../../assets/logo';
-import { t } from '../../translations';
+import { t } from '../../../shared/translations';
 
 interface HeaderProps {
   title: string;

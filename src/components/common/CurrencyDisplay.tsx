@@ -1,6 +1,6 @@
 import React from 'react';
 // FIX: Add .ts extension to fix module import error
-import { t } from '../../translations.ts';
+import { t } from '../../../shared/translations.ts';
 
 interface CurrencyDisplayProps {
   value: number;

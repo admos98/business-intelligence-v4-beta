@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 // FIX: Add .ts extension to fix module import error
-import { t } from '../../translations.ts';
+import { t } from '../../../shared/translations.ts';
 import JalaliCalendar from '../common/JalaliCalendar';
 
 interface NewListModalProps {
@@ -43,7 +43,7 @@ const NewListModal: React.FC<NewListModalProps> = ({ onClose, onCreate }) => {
       >
         <h2 className="text-xl font-bold text-primary mb-4 text-center">{t.createNewListTitle}</h2>
         <form onSubmit={handleSubmit}>
-          
+
           <div className="p-4 bg-background rounded-lg border border-border">
              <JalaliCalendar
                 selectedDate={selectedDate}

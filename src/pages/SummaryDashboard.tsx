@@ -3,9 +3,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Header from '../components/common/Header.tsx';
 import Card from '../components/common/Card.tsx';
 // FIX: Add .ts extension to fix module import error
-import { t } from '../translations.ts';
+import { t } from '../../shared/translations.ts';
 import { useShoppingStore } from '../store/useShoppingStore.ts';
-import { SummaryData } from '../types.ts';
+import { SummaryData } from '../../shared/types.ts';
 import { generateExecutiveSummary } from '../lib/gemini.ts';
 import SkeletonLoader from '../components/common/SkeletonLoader.tsx';
 import CurrencyDisplay from '../components/common/CurrencyDisplay.tsx';

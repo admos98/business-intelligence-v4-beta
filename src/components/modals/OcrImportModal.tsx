@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 // FIX: Add .ts extension to fix module import errors
-import { t } from '../../translations.ts';
-import { OcrParsedItem, OcrResult, PaymentMethod, PaymentStatus, Unit } from '../../types.ts';
+import { t } from '../../../shared/translations.ts';
+import { OcrParsedItem, OcrResult, PaymentMethod, PaymentStatus, Unit } from '../../../shared/types.ts';
 import { parseReceipt } from '../../lib/gemini.ts';
 import { useShoppingStore } from '../../store/useShoppingStore.ts';
 import { compressImage } from '../../lib/image';
