@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI, Type } from "@google/genai";
 // Add .ts to all imports pointing to your source files
-import { OcrResult, SummaryData, Unit, InflationData } from '../shared/types.ts';
-import { t } from '../shared/translations.ts';
-import { toJalaliDateString } from '../shared/jalali.ts';
+import { OcrResult, SummaryData, Unit, InflationData } from '../shared/types.js';
+import { t } from '../shared/translations.js';
+import { toJalaliDateString } from '../shared/jalali.js';
 
 // --- Internal Handlers for each Gemini Task ---
 
