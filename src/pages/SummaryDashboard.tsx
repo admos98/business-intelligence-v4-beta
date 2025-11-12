@@ -61,20 +61,24 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout,})
     return () => clearTimeout(timer);
   }, [period, getSummaryData]);
 
-  useEffect(() => {
-    if (summaryData) {
-      setIsAiLoading(true);
-      generateExecutiveSummary(summaryData)
-        .then(setAiSummary)
-        .catch(err => {
-            console.error(err);
-            setAiSummary(t.aiSummaryError);
-        })
-        .finally(() => setIsAiLoading(false));
-    } else {
-      setAiSummary('');
-    }
-  }, [summaryData]);
+// src/pages/SummaryDashboard.tsx
+
+// Make sure this useEffect looks like this again:
+useEffect(() => {
+  if (summaryData) {
+    setIsAiLoading(true);
+    // Just pass the original summaryData from state. No TypeScript error.
+    generateExecutiveSummary(summaryData)
+      .then(setAiSummary)
+      .catch(err => {
+          console.error(err);
+          setAiSummary(t.aiSummaryError);
+      })
+      .finally(() => setIsAiLoading(false));
+  } else {
+    setAiSummary('');
+  }
+}, [summaryData]);
 
   const handleExportJson = () => {
     if (!summaryData) return;

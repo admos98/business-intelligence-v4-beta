@@ -100,6 +100,12 @@ async function handleGenerateReportSummary(ai: GoogleGenAI, payload: { totalSpen
 }
 
 async function handleGenerateExecutiveSummary(ai: GoogleGenAI, payload: { summaryData: SummaryData }): Promise<string> {
+    if (!payload || !payload.summaryData) {
+        // Log the issue for debugging on the server
+        console.error("handleGenerateExecutiveSummary called with invalid payload:", payload);
+        // Throw a specific error that will be caught by the main handler
+        throw new Error("Invalid payload: 'summaryData' is missing.");
+    }
     const { kpis, charts, period } = payload.summaryData;
     const prompt = `
     You are a professional business consultant for a cafe owner, fluent in Persian. Your task is to provide a concise executive summary based on the following purchasing data for the period from ${toJalaliDateString(period.startDate.toISOString())} to ${toJalaliDateString(period.endDate.toISOString())}.
