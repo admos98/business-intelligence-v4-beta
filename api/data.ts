@@ -6,13 +6,20 @@ const FILENAME = 'mehrnoosh-cafe-data.json';
 
 // Helper function to handle common API request logic
 async function makeGithubRequest(method: string, gistId: string, githubToken: string, body?: any) {
+    const headers: Record<string, string> = {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${githubToken}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+    };
+
+    // Add Content-Type header when sending a body
+    if (body !== undefined) {
+        headers['Content-Type'] = 'application/json';
+    }
+
     const response = await fetch(`${API_BASE_URL}/${gistId}`, {
         method: method,
-        headers: {
-            'Accept': 'application/vnd.github.v3+json',
-            'Authorization': `Bearer ${githubToken}`,
-            'X-GitHub-Api-Version': '2022-11-28',
-        },
+        headers: headers,
         body: body ? JSON.stringify(body) : undefined,
     });
 
@@ -34,7 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
         if (req.method === 'GET') {
             const data = await makeGithubRequest('GET', GIST_ID, GITHUB_TOKEN);
-            
+
             if (data.files && data.files[FILENAME] && data.files[FILENAME].content) {
                 const content = JSON.parse(data.files[FILENAME].content);
                 return res.status(200).json(content);
@@ -51,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         } else if (req.method === 'PATCH') {
             const dataToSave = req.body;
-            
+
             const payload = {
                 files: {
                     [FILENAME]: {

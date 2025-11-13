@@ -8,6 +8,17 @@ import { toJalaliDateString } from '../shared/jalali.js';
 // --- Internal Handlers for each Gemini Task ---
 
 async function handleParseReceipt(ai: GoogleGenAI, payload: { imageBase64: string, categories: string[] }): Promise<OcrResult> {
+  // Validate payload structure
+  if (
+    !payload ||
+    typeof payload.imageBase64 !== 'string' ||
+    payload.imageBase64.length === 0 ||
+    !Array.isArray(payload.categories) ||
+    !payload.categories.every(cat => typeof cat === 'string')
+  ) {
+    throw new Error("Invalid payload: parseReceipt requires 'imageBase64' (non-empty string) and 'categories' (array of strings).");
+  }
+
   const { imageBase64, categories } = payload;
   const itemSchema = { type: Type.OBJECT, properties: { name: { type: Type.STRING }, quantity: { type: Type.NUMBER }, price: { type: Type.NUMBER }, unit: { type: Type.STRING }, suggestedCategory: { type: Type.STRING } }, required: ["name", "quantity", "price"] };
   const receiptSchema = { type: Type.OBJECT, properties: { date: { type: Type.STRING, description: "The date from the receipt in YYYY/MM/DD Jalali format." }, items: { type: Type.ARRAY, items: itemSchema } }, required: ["date", "items"] };
@@ -53,6 +64,17 @@ async function handleParseReceipt(ai: GoogleGenAI, payload: { imageBase64: strin
 }
 
 async function handleGetAnalysisInsights(ai: GoogleGenAI, payload: { question: string, context: string, data: any[] }): Promise<string> {
+    // Validate payload structure
+    if (
+        !payload ||
+        typeof payload.question !== 'string' ||
+        payload.question.trim().length === 0 ||
+        typeof payload.context !== 'string' ||
+        !Array.isArray(payload.data)
+    ) {
+        throw new Error("Invalid payload: getAnalysisInsights requires 'question' (non-empty string), 'context' (string), and 'data' (array).");
+    }
+
     const { question, context, data } = payload;
     const prompt = `
     You are an expert business analyst for a cafe owner, fluent in Persian. Your task is to answer the user's question based *only* on the provided data and context. Do not use any external knowledge.
@@ -79,6 +101,17 @@ async function handleGetAnalysisInsights(ai: GoogleGenAI, payload: { question: s
 }
 
 async function handleGenerateReportSummary(ai: GoogleGenAI, payload: { totalSpending: number, categorySpending: Record<string, number> }): Promise<string> {
+    // Validate payload structure
+    if (
+        !payload ||
+        typeof payload.totalSpending !== 'number' ||
+        !Number.isFinite(payload.totalSpending) ||
+        typeof payload.categorySpending !== 'object' ||
+        payload.categorySpending === null
+    ) {
+        throw new Error("Invalid payload: generateReportSummary requires 'totalSpending' (finite number) and 'categorySpending' (object).");
+    }
+
     const { totalSpending, categorySpending } = payload;
     const prompt = `
     You are an expert financial analyst creating a summary for a cafe's periodic purchasing report. Analyze the provided data and generate a detailed, insightful summary in Persian. The tone should be professional and analytical.
@@ -147,6 +180,23 @@ async function handleGenerateExecutiveSummary(ai: GoogleGenAI, payload: { summar
 }
 
 async function handleAnalyzePriceTrend(ai: GoogleGenAI, payload: { itemName: string, priceHistory: { date: string, pricePerUnit: number }[] }): Promise<string> {
+    // Validate payload structure
+    if (
+        !payload ||
+        typeof payload.itemName !== 'string' ||
+        payload.itemName.trim().length === 0 ||
+        !Array.isArray(payload.priceHistory) ||
+        !payload.priceHistory.every(
+            point =>
+                point &&
+                typeof point.date === 'string' &&
+                typeof point.pricePerUnit === 'number' &&
+                Number.isFinite(point.pricePerUnit)
+        )
+    ) {
+        throw new Error("Invalid payload: analyzePriceTrend requires 'itemName' (non-empty string) and 'priceHistory' (array of {date: string, pricePerUnit: number}).");
+    }
+
     const { itemName, priceHistory } = payload;
     if (priceHistory.length < 2) {
         return t.notEnoughDataForTrend;
@@ -179,6 +229,19 @@ async function handleAnalyzePriceTrend(ai: GoogleGenAI, payload: { itemName: str
 }
 
 async function handleGetInflationInsight(ai: GoogleGenAI, payload: { inflationData: InflationData }): Promise<string> {
+    // Validate payload structure
+    if (
+        !payload ||
+        typeof payload.inflationData !== 'object' ||
+        payload.inflationData === null ||
+        typeof payload.inflationData.overallChange !== 'number' ||
+        !Number.isFinite(payload.inflationData.overallChange) ||
+        !Array.isArray(payload.inflationData.topItemRises) ||
+        !Array.isArray(payload.inflationData.topCategoryRises)
+    ) {
+        throw new Error("Invalid payload: getInflationInsight requires 'inflationData' with numeric 'overallChange' and arrays 'topItemRises' and 'topCategoryRises'.");
+    }
+
     const { inflationData } = payload;
     const prompt = `
     You are a business analyst for a cafe owner, fluent in Persian.
