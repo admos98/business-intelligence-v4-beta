@@ -142,7 +142,7 @@ async function handleGenerateExecutiveSummary(ai: GoogleGenAI, payload: { summar
 
     Your tone should be helpful, professional, and data-driven.
     `;
-    const response = await ai.models.generateContent({ model: 'gemini-1.5-pro', contents: prompt });
+    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
     return (response.text ?? '').trim();
 }
 
