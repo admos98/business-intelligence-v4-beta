@@ -7,6 +7,8 @@ import SummaryDashboard from './pages/SummaryDashboard';
 import ItemsDashboard from './pages/ItemsDashboard';
 import LoginPage from './pages/LoginPage';
 import { ToastProvider } from './components/common/Toast';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { SafeSVG } from './components/common/SafeSVG';
 import { useTheme } from './hooks/useTheme';
 import { useShoppingStore } from './store/useShoppingStore';
 import { t } from '../shared/translations';
@@ -50,7 +52,7 @@ const App: React.FC = () => {
     if (isHydrating) {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen text-center">
-            <div className="w-20 h-20 mb-4" dangerouslySetInnerHTML={{ __html: logoSvg }} />
+            <SafeSVG svgContent={logoSvg} className="w-20 h-20 mb-4" />
             <h2 className="text-xl font-semibold text-primary">{t.loadingData}</h2>
             <p className="text-secondary">{t.syncingData}</p>
         </div>
@@ -91,20 +93,24 @@ const App: React.FC = () => {
 
   if (!currentUser) {
     return (
-      <ToastProvider>
-        <div className="min-h-screen bg-background text-primary font-sans">
-          <LoginPage onLogin={login} />
-        </div>
-      </ToastProvider>
+      <ErrorBoundary>
+        <ToastProvider>
+          <div className="min-h-screen bg-background text-primary font-sans">
+            <LoginPage onLogin={login} />
+          </div>
+        </ToastProvider>
+      </ErrorBoundary>
     );
   }
 
   return (
-    <ToastProvider>
-      <div className="min-h-screen bg-background text-primary font-sans">
-        {renderView()}
-      </div>
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <div className="min-h-screen bg-background text-primary font-sans">
+          {renderView()}
+        </div>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 };
 

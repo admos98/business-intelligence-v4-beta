@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../hooks/useTheme';
 import ThemeToggleButton from './ThemeToggleButton';
+import { SafeSVG } from './SafeSVG';
 import { logoSvg } from '../../assets/logo';
 import { t } from '../../../shared/translations';
 
@@ -55,7 +56,7 @@ const Header: React.FC<HeaderProps> = ({ title, onBack, backText, children, onLo
              <h1 className="text-lg font-bold text-primary tracking-tight text-right">
                 {title}
              </h1>
-             <div className="w-10 h-10" dangerouslySetInnerHTML={{ __html: logoSvg }} />
+             <SafeSVG svgContent={logoSvg} className="w-10 h-10" />
           </div>
 
           {/* LEFT Group (Buttons) */}

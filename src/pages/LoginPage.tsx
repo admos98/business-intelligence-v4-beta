@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-// FIX: Add .ts extension to fix module import error
 import { t } from '../../shared/translations.ts';
 import { logoSvg } from '../assets/logo.ts';
 import Card from '../components/common/Card.tsx';
+import { SafeSVG } from '../components/common/SafeSVG.tsx';
+import { sanitizeString, validateString } from '../utils/validation.ts';
 
 interface LoginPageProps {
   onLogin: (username: string, password: string) => Promise<boolean>;
@@ -19,8 +20,27 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setError(null);
     setIsSubmitting(true);
 
+    // Validate and sanitize inputs
+    const usernameValidation = validateString(username, 1, 50);
+    const passwordValidation = validateString(password, 1, 100);
+
+    if (!usernameValidation.isValid) {
+      setError(usernameValidation.error || t.loginError);
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!passwordValidation.isValid) {
+      setError(passwordValidation.error || t.loginError);
+      setIsSubmitting(false);
+      return;
+    }
+
+    const sanitizedUsername = sanitizeString(username);
+    const sanitizedPassword = sanitizeString(password);
+
     try {
-      const success = await onLogin(username, password);
+      const success = await onLogin(sanitizedUsername, sanitizedPassword);
       if (!success) {
         setError(t.loginError);
       }
@@ -33,7 +53,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-6">
-            <div className="w-20 h-20 mb-4" dangerouslySetInnerHTML={{ __html: logoSvg }} />
+            <SafeSVG svgContent={logoSvg} className="w-20 h-20 mb-4" />
             <h1 className="text-2xl font-bold text-primary">{t.appTitle}</h1>
         </div>
 

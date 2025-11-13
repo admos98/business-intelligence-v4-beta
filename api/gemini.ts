@@ -54,21 +54,25 @@ async function retryGeminiCall<T>(
     maxRetries: number = 3,
     baseDelayMs: number = 1000
 ): Promise<T> {
-    let lastError: any;
+    let lastError: Error | unknown;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             return await operation();
-        } catch (error: any) {
+        } catch (error: unknown) {
             lastError = error;
 
             // Only retry on 503/overload errors
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorCause = error instanceof Error && error.cause instanceof Error ? error.cause.message : '';
+
             const isRetryable =
-                error.message?.includes('overloaded') ||
-                error.message?.includes('UNAVAILABLE') ||
-                error.message?.includes('503') ||
-                error.message?.includes('Service Unavailable') ||
-                (error.cause?.message?.includes('503') || error.cause?.message?.includes('UNAVAILABLE'));
+                errorMessage.includes('overloaded') ||
+                errorMessage.includes('UNAVAILABLE') ||
+                errorMessage.includes('503') ||
+                errorMessage.includes('Service Unavailable') ||
+                errorCause.includes('503') ||
+                errorCause.includes('UNAVAILABLE');
 
             if (!isRetryable || attempt === maxRetries) {
                 throw error;
@@ -81,7 +85,10 @@ async function retryGeminiCall<T>(
         }
     }
 
-    throw lastError;
+    if (lastError instanceof Error) {
+        throw lastError;
+    }
+    throw new Error('Unknown error occurred in retryGeminiCall');
 }
 
 // --- Internal Handlers for each Gemini Task ---
@@ -412,39 +419,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Success case: return 200 with data
         return res.status(200).json({ data });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         // 5. Advanced Error Handling
-        console.error(`Error processing task "${task}":`, error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`Error processing task "${task}":`, errorMessage);
 
         // Case A: The Google Gemini API is overloaded or unavailable
-        if (error.message?.includes('overloaded') || error.message?.includes('UNAVAILABLE') || error.message?.includes('503')) {
+        if (errorMessage.includes('overloaded') || errorMessage.includes('UNAVAILABLE') || errorMessage.includes('503')) {
             return res.status(503).json({
                 error: 'The AI service is currently unavailable or overloaded. Please try again in a few moments.',
-                details: error.message
+                details: errorMessage
             });
         }
 
         // Case B: The AI returned an invalid response that could not be parsed
-        if (error.message?.includes('Failed to parse Gemini JSON') || error.message?.includes('Gemini response validation failed')) {
+        if (errorMessage.includes('Failed to parse Gemini JSON') || errorMessage.includes('Gemini response validation failed')) {
             return res.status(502).json({
                 error: 'The AI service returned an invalid response.',
-                details: error.message
+                details: errorMessage
             });
         }
 
         // Case C: The client sent a malformed payload (e.g., missing summaryData, bad date format)
         // This relies on your helper functions throwing specific error messages.
-        if (error.message?.includes('Invalid payload') || error.message?.includes('Invalid date format')) {
+        if (errorMessage.includes('Invalid payload') || errorMessage.includes('Invalid date format')) {
             return res.status(400).json({
                 error: 'Bad Request: The provided data was malformed.',
-                details: error.message
+                details: errorMessage
             });
         }
 
         // Case D: Any other unexpected error in your code
         return res.status(500).json({
             error: 'An internal server error occurred while processing the AI request.',
-            details: error.message
+            details: errorMessage
         });
     }
 }

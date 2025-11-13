@@ -10,6 +10,7 @@ async function callGeminiApi<T>(task: string, payload: unknown): Promise<T> {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({ task, payload }),
+        signal: AbortSignal.timeout(60000), // 60 second timeout for AI operations
     });
 
     if (!response.ok) {
@@ -39,7 +40,7 @@ export async function parseReceipt(imageBase64: string, categories: string[]): P
 export async function getAnalysisInsights(
     question: string,
     context: string,
-    data: any[]
+    data: unknown[]
 ): Promise<string> {
     return callGeminiApi<string>('getAnalysisInsights', { question, context, data });
 }

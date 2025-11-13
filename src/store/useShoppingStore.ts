@@ -1,12 +1,11 @@
 // src/store/useShoppingStore.ts
 
 import { create } from 'zustand';
-// FIX: Removed unused 'User' type
 import { ShoppingList, ShoppingItem, CafeCategory, Vendor, OcrResult, Unit, ItemStatus, PaymentStatus, PaymentMethod, PendingPaymentItem, SmartSuggestion, SummaryData, RecentPurchaseItem, MasterItem, AuthSlice, ShoppingState, InflationData, InflationDetail, InflationPoint } from '../../shared/types.ts';
 import { t } from '../../shared/translations.ts';
 import { parseJalaliDate, toJalaliDateString, gregorianToJalali } from '../../shared/jalali.ts';
-// FIX: Added .ts extension to resolve module path ambiguity.
 import { fetchData, saveData } from '../lib/api.ts';
+import { defaultUsers } from '../config/auth.ts';
 
 type SummaryPeriod = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
 
@@ -107,8 +106,10 @@ const debouncedSaveData = (state: FullShoppingState) => {
             categoryVendorMap: state.categoryVendorMap,
             itemInfoMap: state.itemInfoMap,
         };
-        // FIX: Explicitly typed 'err' as 'any' to resolve implicit 'any' error.
-        saveData(dataToSave).catch((err: any) => console.error("Auto-save failed:", err));
+        saveData(dataToSave).catch((err: unknown) => {
+            const errorMessage = err instanceof Error ? err.message : "Auto-save failed";
+            console.error("Auto-save failed:", errorMessage);
+        });
     }, 1500); // Debounce for 1.5 seconds
 };
 
@@ -118,12 +119,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       ...emptyState,
 
       // Auth Slice
-      users: [{
-          id: 'user-1',
-          username: 'mehrnoosh',
-          passwordHash: '02dc4c8ba1c2c109611b8f08baad4b9cf5f268d1c4aee6d21fd97be4ec1b1385',
-          salt: '3bb5f7b9d6a64e5ab74c2f6d4c8a02e2'
-      }],
+      users: defaultUsers,
       currentUser: null,
       login: async (username, password) => {
         const user = get().users.find(u => u.username.toLowerCase() === username.toLowerCase());
@@ -899,32 +895,53 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
       importData: async (jsonData) => {
         try {
-            const data = JSON.parse(jsonData);
+            const data = JSON.parse(jsonData) as {
+                lists?: unknown[];
+                customCategories?: string[];
+                vendors?: Vendor[];
+                categoryVendorMap?: Record<string, string>;
+                itemInfoMap?: Record<string, { unit: string; category: string }>;
+            };
+
             if (Array.isArray(data.lists)) {
-                const cleanedLists = data.lists.map((list: any) => ({
-                    ...list,
-                    items: list.items.map((item: any) => {
-                        const { receiptImage, ...rest } = item;
-                        return rest;
-                    }),
-                }));
+                const cleanedLists = data.lists.map((list: unknown) => {
+                    if (typeof list === 'object' && list !== null) {
+                        const listObj = list as { items?: unknown[]; [key: string]: unknown };
+                        if (Array.isArray(listObj.items)) {
+                            return {
+                                ...listObj,
+                                items: listObj.items.map((item: unknown) => {
+                                    if (typeof item === 'object' && item !== null) {
+                                        const itemObj = item as { receiptImage?: unknown; [key: string]: unknown };
+                                        const { receiptImage, ...rest } = itemObj;
+                                        return rest;
+                                    }
+                                    return item;
+                                }),
+                            };
+                        }
+                        return listObj;
+                    }
+                    return list;
+                }) as ShoppingList[];
 
                 const cleanedData = {
                     lists: cleanedLists,
-                    customCategories: data.customCategories || [],
-                    vendors: data.vendors || [],
-                    categoryVendorMap: data.categoryVendorMap || {},
-                    itemInfoMap: data.itemInfoMap || {},
+                    customCategories: Array.isArray(data.customCategories) ? data.customCategories : [],
+                    vendors: Array.isArray(data.vendors) ? data.vendors : [],
+                    categoryVendorMap: data.categoryVendorMap && typeof data.categoryVendorMap === 'object' ? data.categoryVendorMap : {},
+                    itemInfoMap: data.itemInfoMap && typeof data.itemInfoMap === 'object' ? data.itemInfoMap : {},
                 };
 
                 set(cleanedData);
                 await saveData(cleanedData);
             } else {
-                throw new Error("Invalid data format");
+                throw new Error("Invalid data format: lists must be an array");
             }
         } catch (error) {
-            console.error("Import failed:", error);
-            throw error;
+            const errorMessage = error instanceof Error ? error.message : "Import failed";
+            console.error("Import failed:", errorMessage);
+            throw new Error(errorMessage);
         }
       },
 

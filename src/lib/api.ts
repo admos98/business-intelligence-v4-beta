@@ -1,18 +1,33 @@
+import { ShoppingList, Vendor } from '../../shared/types';
+
 interface StoredData {
-    lists: any[];
+    lists: ShoppingList[];
     customCategories: string[];
-    vendors: any[];
+    vendors: Vendor[];
     categoryVendorMap: Record<string, string>;
-    itemInfoMap: Record<string, any>;
+    itemInfoMap: Record<string, { unit: string; category: string }>;
+}
+
+interface ApiErrorResponse {
+    error?: string;
+    details?: string;
 }
 
 export const fetchData = async (): Promise<StoredData | null> => {
     try {
-        const response = await fetch('/api/data');
+        const response = await fetch('/api/data', {
+            signal: AbortSignal.timeout(30000), // 30 second timeout
+        });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`Failed to fetch data: ${errorData.details || response.statusText}`);
+            let errorMessage = response.statusText;
+            try {
+                const errorData = await response.json() as ApiErrorResponse;
+                errorMessage = errorData.details || errorData.error || errorMessage;
+            } catch {
+                // If JSON parsing fails, use status text
+            }
+            throw new Error(`Failed to fetch data: ${errorMessage}`);
         }
 
         // Vercel's response for an empty body might be a 204 No Content
@@ -20,11 +35,14 @@ export const fetchData = async (): Promise<StoredData | null> => {
             return null;
         }
 
-        return await response.json();
+        return await response.json() as StoredData;
 
     } catch (error) {
-        console.error("Error in fetchData:", error);
-        throw error;
+        if (error instanceof Error) {
+            console.error("Error in fetchData:", error.message);
+            throw error;
+        }
+        throw new Error("Unknown error occurred while fetching data");
     }
 };
 
@@ -36,14 +54,24 @@ export const saveData = async (data: StoredData): Promise<void> => {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(data),
+            signal: AbortSignal.timeout(30000), // 30 second timeout
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`Failed to save data: ${errorData.details || response.statusText}`);
+            let errorMessage = response.statusText;
+            try {
+                const errorData = await response.json() as ApiErrorResponse;
+                errorMessage = errorData.details || errorData.error || errorMessage;
+            } catch {
+                // If JSON parsing fails, use status text
+            }
+            throw new Error(`Failed to save data: ${errorMessage}`);
         }
     } catch (error) {
-        console.error("Error in saveData:", error);
-        throw error;
+        if (error instanceof Error) {
+            console.error("Error in saveData:", error.message);
+            throw error;
+        }
+        throw new Error("Unknown error occurred while saving data");
     }
 };
