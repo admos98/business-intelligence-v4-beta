@@ -99,16 +99,28 @@ async function handleGenerateReportSummary(ai: GoogleGenAI, payload: { totalSpen
     return (response.text ?? '').trim();
 }
 
+// In /api/gemini.ts
+
 async function handleGenerateExecutiveSummary(ai: GoogleGenAI, payload: { summaryData: SummaryData }): Promise<string> {
+    // FIX #1: Validate that the payload and summaryData exist (You've already done this!)
     if (!payload || !payload.summaryData) {
-        // Log the issue for debugging on the server
         console.error("handleGenerateExecutiveSummary called with invalid payload:", payload);
-        // Throw a specific error that will be caught by the main handler
         throw new Error("Invalid payload: 'summaryData' is missing.");
     }
+
     const { kpis, charts, period } = payload.summaryData;
+
+    // FIX #2: Convert date strings from the payload into actual Date objects
+    const startDate = new Date(period.startDate);
+    const endDate = new Date(period.endDate);
+
+    // Now, ensure they are valid dates before using them
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        throw new Error("Invalid date format in payload.summaryData.period");
+    }
+
     const prompt = `
-    You are a professional business consultant for a cafe owner, fluent in Persian. Your task is to provide a concise executive summary based on the following purchasing data for the period from ${toJalaliDateString(period.startDate.toISOString())} to ${toJalaliDateString(period.endDate.toISOString())}.
+    You are a professional business consultant for a cafe owner, fluent in Persian. Your task is to provide a concise executive summary based on the following purchasing data for the period from ${toJalaliDateString(startDate.toISOString())} to ${toJalaliDateString(endDate.toISOString())}.
 
     **Key Performance Indicators (KPIs):**
     *   Total Spend: ${kpis.totalSpend.toLocaleString('fa-IR')} ${t.currency}
@@ -130,7 +142,7 @@ async function handleGenerateExecutiveSummary(ai: GoogleGenAI, payload: { summar
 
     Your tone should be helpful, professional, and data-driven.
     `;
-    const response = await ai.models.generateContent({ model: 'gemini-2.5-pro', contents: prompt });
+    const response = await ai.models.generateContent({ model: 'gemini-1.5-pro', contents: prompt });
     return (response.text ?? '').trim();
 }
 
@@ -192,21 +204,33 @@ async function handleGetInflationInsight(ai: GoogleGenAI, payload: { inflationDa
 // --- Main API Handler ---
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+    // 1. Standard method check
     if (req.method !== 'POST') {
         res.setHeader('Allow', ['POST']);
         return res.status(405).end(`Method ${req.method} Not Allowed`);
     }
 
+    // 2. Environment variable check
     const { API_KEY } = process.env;
     if (!API_KEY) {
-        return res.status(500).json({ error: 'Server configuration error: Missing API_KEY for Gemini.' });
+        console.error("Server configuration error: Missing API_KEY for Gemini.");
+        return res.status(500).json({ error: 'Server configuration error.' });
+    }
+
+    // 3. Basic payload validation
+    const { task, payload } = req.body;
+    if (!task) {
+        return res.status(400).json({ error: 'Bad Request: "task" field is missing.' });
+    }
+    if (!payload) {
+        return res.status(400).json({ error: 'Bad Request: "payload" field is missing.' });
     }
 
     const ai = new GoogleGenAI({ apiKey: API_KEY });
-    const { task, payload } = req.body;
 
     try {
         let data;
+        // 4. Route the request based on the task
         switch (task) {
             case 'parseReceipt':
                 data = await handleParseReceipt(ai, payload);
@@ -227,11 +251,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 data = await handleGetInflationInsight(ai, payload);
                 break;
             default:
-                return res.status(400).json({ error: 'Invalid task specified.' });
+                return res.status(400).json({ error: `Invalid task specified: "${task}"` });
         }
+        // Success case: return 200 with data
         return res.status(200).json({ data });
+
     } catch (error: any) {
+        // 5. Advanced Error Handling
         console.error(`Error processing task "${task}":`, error);
-        return res.status(500).json({ error: 'An internal server error occurred while processing the AI request.', details: error.message });
+
+        // Case A: The Google Gemini API is overloaded or unavailable
+        if (error.message?.includes('overloaded') || error.message?.includes('UNAVAILABLE') || error.message?.includes('503')) {
+            return res.status(503).json({
+                error: 'The AI service is currently unavailable or overloaded. Please try again in a few moments.',
+                details: error.message
+            });
+        }
+
+        // Case B: The client sent a malformed payload (e.g., missing summaryData, bad date format)
+        // This relies on your helper functions throwing specific error messages.
+        if (error.message?.includes('Invalid payload') || error.message?.includes('Invalid date format')) {
+            return res.status(400).json({
+                error: 'Bad Request: The provided data was malformed.',
+                details: error.message
+            });
+        }
+
+        // Case C: Any other unexpected error in your code
+        return res.status(500).json({
+            error: 'An internal server error occurred while processing the AI request.',
+            details: error.message
+        });
     }
 }
