@@ -4,8 +4,34 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const API_BASE_URL = 'https://api.github.com/gists';
 const FILENAME = 'mehrnoosh-cafe-data.json';
 
+interface StoredData {
+    lists: unknown;
+    customCategories: unknown;
+    vendors: unknown;
+    categoryVendorMap: unknown;
+    itemInfoMap: unknown;
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isValidStoredData = (value: unknown): value is StoredData => {
+    if (!isPlainObject(value)) {
+        return false;
+    }
+
+    const { lists, customCategories, vendors, categoryVendorMap, itemInfoMap } = value;
+    return (
+        Array.isArray(lists) &&
+        Array.isArray(customCategories) &&
+        Array.isArray(vendors) &&
+        isPlainObject(categoryVendorMap) &&
+        isPlainObject(itemInfoMap)
+    );
+};
+
 // Helper function to handle common API request logic
-async function makeGithubRequest(method: string, gistId: string, githubToken: string, body?: any) {
+async function makeGithubRequest(method: string, gistId: string, githubToken: string, body?: unknown) {
     const headers: Record<string, string> = {
         'Accept': 'application/vnd.github.v3+json',
         'Authorization': `Bearer ${githubToken}`,
@@ -28,7 +54,16 @@ async function makeGithubRequest(method: string, gistId: string, githubToken: st
         throw new Error(`GitHub API Error: ${response.status} ${response.statusText} - ${errorBody}`);
     }
 
-    return response.json();
+    if (response.status === 204) {
+        return null;
+    }
+
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.includes('application/json')) {
+        return response.json();
+    }
+
+    return response.text();
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -42,9 +77,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (req.method === 'GET') {
             const data = await makeGithubRequest('GET', GIST_ID, GITHUB_TOKEN);
 
-            if (data.files && data.files[FILENAME] && data.files[FILENAME].content) {
-                const content = JSON.parse(data.files[FILENAME].content);
-                return res.status(200).json(content);
+            if (isPlainObject(data) && isPlainObject(data.files) && isPlainObject(data.files[FILENAME]) && typeof data.files[FILENAME].content === 'string') {
+                try {
+                    const content = JSON.parse(data.files[FILENAME].content);
+                    if (!isValidStoredData(content)) {
+                        throw new Error('Invalid gist payload structure');
+                    }
+                    return res.status(200).json(content);
+                } catch (parseError) {
+                    console.error('Failed to parse gist content:', parseError);
+                    return res.status(502).json({ error: 'Failed to parse remote data.' });
+                }
             } else {
                 // If the file doesn't exist or is empty, return a default empty state.
                 return res.status(200).json({
@@ -57,6 +100,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
 
         } else if (req.method === 'PATCH') {
+            if (!isPlainObject(req.body) || !isValidStoredData(req.body)) {
+                return res.status(400).json({ error: 'Bad Request: Payload is malformed.' });
+            }
+
             const dataToSave = req.body;
 
             const payload = {

@@ -36,7 +36,7 @@ interface StructuredReportData {
 
 const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout }) => {
   const { lists, updateList, addCustomData, allCategories, vendors, addOcrPurchase, findOrCreateVendor, updateCategoryVendorMap, getKnownItemNames, getItemInfo, getLatestPricePerUnit, updateItem } = useShoppingStore();
-  const list = useMemo(() => lists.find(l => l.id === listId)!, [lists, listId]);
+  const list = useMemo(() => lists.find(l => l.id === listId), [lists, listId]);
 
   const [newItemName, setNewItemName] = useState('');
   const [newItemAmount, setNewItemAmount] = useState<number | ''>('');
@@ -54,7 +54,7 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
   const { addToast } = useToast();
   const vendorMap = useMemo(() => new Map<string, string>(vendors.map(v => [v.id, v.name])), [vendors]);
 
-  const knownItemNames = useMemo(() => getKnownItemNames(), [lists]);
+  const knownItemNames = useMemo(() => getKnownItemNames(), [lists, getKnownItemNames]);
 
   const onUpdateList = (updatedList: ShoppingList) => {
     updateList(listId, updatedList);
@@ -72,6 +72,11 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
   };
 
   const handleAddItem = () => {
+    if (!list) {
+      addToast(t.syncError, 'error');
+      return;
+    }
+
     if (newItemName.trim() && Number(newItemAmount) > 0) {
       const latestPricePerUnit = getLatestPricePerUnit(newItemName.trim(), newItemUnit);
       const estimatedPrice = latestPricePerUnit ? latestPricePerUnit * Number(newItemAmount) : undefined;
@@ -100,6 +105,10 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
   };
 
   const handleConfirmBuy = (itemId: string, purchasedAmount: number, totalPrice: number, vendorName?: string, paymentMethod?: PaymentMethod, paymentStatus?: PaymentStatus) => {
+    if (!list) {
+      addToast(t.syncError, 'error');
+      return;
+    }
     const vendorId = findOrCreateVendor(vendorName);
     const itemToUpdate = list.items.find(i => i.id === itemId);
 
@@ -112,7 +121,11 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
     setItemToBuy(null);
   };
 
-   const handleSavePurchasedItem = (itemId: string, updates: Partial<ShoppingItem>) => {
+  const handleSavePurchasedItem = (itemId: string, updates: Partial<ShoppingItem>) => {
+    if (!list) {
+      addToast(t.syncError, 'error');
+      return;
+    }
     const itemToUpdate = list.items.find(i => i.id === itemId);
 
     if (itemToUpdate && itemToUpdate.category && updates.vendorId) {
@@ -125,6 +138,10 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
   };
 
   const handleConfirmBulkBuy = (updatedItems: ShoppingItem[], sharedVendorName?: string) => {
+    if (!list) {
+      addToast(t.syncError, 'error');
+      return;
+    }
     const vendorId = findOrCreateVendor(sharedVendorName);
     const updatedItemMap = new Map(updatedItems.map(item => {
         if (item.category && vendorId) {
@@ -140,6 +157,10 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
   };
 
   const handleSaveEdit = (itemId: string, updates: Partial<ShoppingItem>) => {
+    if (!list) {
+      addToast(t.syncError, 'error');
+      return;
+    }
     const originalItem = list.items.find(item => item.id === itemId);
     if (originalItem) addCustomData({ ...originalItem, ...updates });
     updateItem(listId, itemId, updates);
@@ -148,6 +169,10 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
   };
 
   const handleDeleteItem = (itemId: string) => {
+    if (!list) {
+      addToast(t.syncError, 'error');
+      return;
+    }
     onUpdateList({ ...list, items: list.items.filter(item => item.id !== itemId) });
     addToast(t.itemDeleted, 'info');
   };
@@ -158,7 +183,7 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
     setSelectedItemIds(newSelection);
   };
 
-  const boughtItems = list.items.filter(item => item.status === ItemStatus.Bought);
+  const boughtItems = list ? list.items.filter(item => item.status === ItemStatus.Bought) : [];
 
   const groupAndSortPurchasedItems = (items: ShoppingItem[], vendors: Map<string, string>): StructuredReportData[] => {
     const categoryMap: Record<string, Record<string, ShoppingItem[]>> = {};
@@ -199,6 +224,10 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
   };
 
   const handleDownloadDailyReport = async () => {
+    if (!list) {
+      addToast(t.syncError, 'error');
+      return;
+    }
     setIsPdfLoading(true);
     try {
       // Use the new deterministic grouping function
@@ -222,6 +251,10 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
   };
 
   const handleExportJson = () => {
+      if (!list) {
+        addToast(t.syncError, 'error');
+        return;
+      }
       const listWithVendorNames = {
         ...list,
         items: list.items.map(item => ({
@@ -241,7 +274,7 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
   };
 
 
-  const pendingItems = list.items.filter(item => item.status === ItemStatus.Pending);
+  const pendingItems = list ? list.items.filter(item => item.status === ItemStatus.Pending) : [];
 
   const groupItemsByCategory = (items: ShoppingItem[]): Record<string, ShoppingItem[]> => {
     return items.reduce((acc, item) => {

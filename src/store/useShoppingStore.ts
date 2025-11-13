@@ -66,6 +66,16 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
 
 const DEFAULT_CATEGORIES: string[] = Object.values(CafeCategory);
 
+const hashPassword = async (password: string, salt: string): Promise<string> => {
+    if (!(globalThis.crypto && typeof globalThis.crypto.subtle !== 'undefined')) {
+        throw new Error("Secure login is unavailable in this environment.");
+    }
+    const data = new TextEncoder().encode(`${salt}:${password}`);
+    const hashBuffer = await globalThis.crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
+};
+
 const emptyState = {
   lists: [],
   customCategories: [],
@@ -75,9 +85,14 @@ const emptyState = {
 };
 
 // --- Debounced save function ---
-let debounceTimer: number;
+let debounceTimer: number | null = null;
 const debouncedSaveData = (state: FullShoppingState) => {
-    clearTimeout(debounceTimer);
+    if (typeof window === 'undefined') {
+        return;
+    }
+    if (debounceTimer !== null) {
+        window.clearTimeout(debounceTimer);
+    }
     debounceTimer = window.setTimeout(() => {
         const { currentUser, isHydrating } = state;
         // Do not save if no user or during initial hydration.
@@ -103,14 +118,29 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       ...emptyState,
 
       // Auth Slice
-      users: [{ id: 'user-1', username: 'mehrnoosh', passwordHash: 'cafe' }],
+      users: [{
+          id: 'user-1',
+          username: 'mehrnoosh',
+          passwordHash: '02dc4c8ba1c2c109611b8f08baad4b9cf5f268d1c4aee6d21fd97be4ec1b1385',
+          salt: '3bb5f7b9d6a64e5ab74c2f6d4c8a02e2'
+      }],
       currentUser: null,
-      login: (username, password) => {
-        const user = get().users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.passwordHash === password);
-        if (user) {
-          set({ currentUser: user, isHydrating: true });
-          return true;
+      login: async (username, password) => {
+        const user = get().users.find(u => u.username.toLowerCase() === username.toLowerCase());
+        if (!user) {
+            return false;
         }
+
+        try {
+            const hashedInput = await hashPassword(password, user.salt);
+            if (hashedInput === user.passwordHash) {
+                set({ currentUser: user, isHydrating: true });
+                return true;
+            }
+        } catch (error) {
+            console.error("Login failed due to hashing error:", error);
+        }
+
         return false;
       },
       logout: () => {
@@ -264,13 +294,20 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       },
 
       deleteVendor: (vendorId) => {
-        set(state => ({
-            vendors: state.vendors.filter(v => v.id !== vendorId),
-            lists: state.lists.map(list => ({
-                ...list,
-                items: list.items.map(item => item.vendorId === vendorId ? { ...item, vendorId: undefined } : item)
-            }))
-        }));
+        set(state => {
+            const updatedCategoryVendorMap = Object.fromEntries(
+                Object.entries(state.categoryVendorMap).filter(([, id]) => id !== vendorId)
+            );
+
+            return {
+                vendors: state.vendors.filter(v => v.id !== vendorId),
+                lists: state.lists.map(list => ({
+                    ...list,
+                    items: list.items.map(item => item.vendorId === vendorId ? { ...item, vendorId: undefined } : item)
+                })),
+                categoryVendorMap: updatedCategoryVendorMap,
+            };
+        });
         debouncedSaveData(get());
       },
 
@@ -410,7 +447,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       getLatestPurchaseInfo: (name, unit) => {
           const allPurchasesOfItem = get().lists
               .flatMap(list => list.items.map(item => ({ ...item, purchaseDate: new Date(list.createdAt) })))
-              .filter(item => item.name === name && item.unit === unit && item.status === ItemStatus.Bought && item.paidPrice && item.purchasedAmount)
+              .filter(item => item.name === name && item.unit === unit && item.status === ItemStatus.Bought && item.paidPrice && item.purchasedAmount && item.purchasedAmount > 0)
               .sort((a, b) => b.purchaseDate.getTime() - a.purchaseDate.getTime());
 
           if (allPurchasesOfItem.length > 0) {
@@ -487,8 +524,11 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         // --- Item Inflation ---
         const itemPrices = new Map<string, { prices: { date: Date, price: number }[], category: string }>();
         allPurchases.forEach(item => {
+            if (!item.paidPrice || !item.purchasedAmount || item.purchasedAmount <= 0) {
+                return;
+            }
             const key = `${item.name}-${item.unit}`;
-            const pricePerUnit = item.paidPrice! / item.purchasedAmount!;
+            const pricePerUnit = item.paidPrice / item.purchasedAmount;
             if (!itemPrices.has(key)) {
                 itemPrices.set(key, { prices: [], category: item.category });
             }
@@ -515,9 +555,12 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const categoryItemPrices = new Map<string, Map<string, { prices: { date: Date, price: number }[], totalSpend: number }>>();
 
         allPurchases.forEach(item => {
+            if (!item.paidPrice || !item.purchasedAmount || item.purchasedAmount <= 0) {
+                return;
+            }
             const category = item.category;
             const itemKey = `${item.name}-${item.unit}`;
-            const pricePerUnit = item.paidPrice! / item.purchasedAmount!;
+            const pricePerUnit = item.paidPrice / item.purchasedAmount;
 
             if (!categoryItemPrices.has(category)) {
                 categoryItemPrices.set(category, new Map());
@@ -699,12 +742,18 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             }
         });
 
-        return suggestions.sort((a,b) => {
-            // Sort by priority first, then by how low the stock is (more urgent first)
-            if (a.priority > b.priority) return -1;
-            if (a.priority < b.priority) return 1;
-            // You could add a secondary sort key here if needed
-            return 0;
+        const priorityRank: Record<SmartSuggestion['priority'], number> = {
+            high: 0,
+            medium: 1,
+            low: 2,
+        };
+
+        return suggestions.sort((a, b) => {
+            const priorityDelta = priorityRank[a.priority] - priorityRank[b.priority];
+            if (priorityDelta !== 0) {
+                return priorityDelta;
+            }
+            return a.name.localeCompare(b.name, 'fa');
         });
       },
 

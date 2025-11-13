@@ -119,24 +119,44 @@ const InflationTracker: React.FC = () => {
     const chartInstance = useRef<Chart | null>(null);
 
     useEffect(() => {
+        let cancelled = false;
         setIsLoading(true);
         setIsAiLoading(true);
         setAiInsight('');
 
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
             const data = getInflationData(period);
+            if (cancelled) return;
+
             setInflationData(data);
             setIsLoading(false);
 
             if (data) {
                 getInflationInsight(data)
-                    .then(setAiInsight)
-                    .catch(() => setAiInsight(t.aiError))
-                    .finally(() => setIsAiLoading(false));
+                    .then((result) => {
+                        if (!cancelled) {
+                            setAiInsight(result);
+                        }
+                    })
+                    .catch(() => {
+                        if (!cancelled) {
+                            setAiInsight(t.aiError);
+                        }
+                    })
+                    .finally(() => {
+                        if (!cancelled) {
+                            setIsAiLoading(false);
+                        }
+                    });
             } else {
                 setIsAiLoading(false);
             }
         }, 100);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timeoutId);
+        };
     }, [period, getInflationData]);
 
     useEffect(() => {

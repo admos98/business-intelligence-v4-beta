@@ -5,7 +5,7 @@ import { logoSvg } from '../assets/logo.ts';
 import Card from '../components/common/Card.tsx';
 
 interface LoginPageProps {
-  onLogin: (username: string, password: string) => boolean;
+  onLogin: (username: string, password: string) => Promise<boolean>;
 }
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
@@ -14,19 +14,19 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
 
-    // Simulate network delay
-    setTimeout(() => {
-        const success = onLogin(username, password);
-        if (!success) {
-          setError(t.loginError);
-        }
-        setIsSubmitting(false);
-    }, 500);
+    try {
+      const success = await onLogin(username, password);
+      if (!success) {
+        setError(t.loginError);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

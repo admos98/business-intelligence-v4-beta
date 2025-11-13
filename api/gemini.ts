@@ -1,9 +1,52 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI, Type } from "@google/genai";
 // Add .ts to all imports pointing to your source files
-import { OcrResult, SummaryData, Unit, InflationData } from '../shared/types.js';
+import { OcrResult, OcrParsedItem, SummaryData, Unit, InflationData } from '../shared/types.js';
 import { t } from '../shared/translations.js';
 import { toJalaliDateString } from '../shared/jalali.js';
+
+const extractJsonPayload = (rawText: string): string => {
+    const trimmed = rawText.trim();
+    if (!trimmed) {
+        throw new Error('Gemini response was empty.');
+    }
+    if (trimmed.startsWith('```')) {
+        const fence = trimmed.startsWith('```json') ? '```json' : '```';
+        const closingFenceIndex = trimmed.lastIndexOf('```');
+        if (closingFenceIndex === -1) {
+            throw new Error('Gemini response did not contain a closing code fence.');
+        }
+        return trimmed.slice(fence.length, closingFenceIndex).trim();
+    }
+    return trimmed;
+};
+
+const parseGeminiJson = <T>(rawText: string, context: string): T => {
+    const normalized = extractJsonPayload(rawText);
+    try {
+        return JSON.parse(normalized) as T;
+    } catch (error) {
+        throw new Error(`Failed to parse Gemini JSON for ${context}: ${(error as Error).message}`);
+    }
+};
+
+const isValidReceiptItem = (value: unknown): value is OcrParsedItem => {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as Record<string, unknown>;
+    const unitValue = candidate.unit;
+    const isUnitValid =
+        unitValue === undefined ||
+        (typeof unitValue === 'string' && Object.values(Unit).includes(unitValue as Unit));
+    return (
+        typeof candidate.name === 'string' &&
+        typeof candidate.quantity === 'number' &&
+        Number.isFinite(candidate.quantity) &&
+        typeof candidate.price === 'number' &&
+        Number.isFinite(candidate.price) &&
+        isUnitValid &&
+        (candidate.suggestedCategory === undefined || typeof candidate.suggestedCategory === 'string')
+    );
+};
 
 // Retry wrapper for Gemini API calls with exponential backoff
 async function retryGeminiCall<T>(
@@ -84,21 +127,19 @@ async function handleParseReceipt(ai: GoogleGenAI, payload: { imageBase64: strin
     })
   );
 
-  let jsonText = (response.text ?? '').trim();
-  if (jsonText.startsWith('```json')) {
-    jsonText = jsonText.substring(7, jsonText.length - 3).trim();
-  } else if (jsonText.startsWith('```')) {
-    jsonText = jsonText.substring(3, jsonText.length - 3).trim();
-  }
-  const parsedJson = JSON.parse(jsonText);
+  const parsedJson = parseGeminiJson<{ date: unknown; items: unknown }>(response.text ?? '', 'parseReceipt');
 
-  if (parsedJson.items && Array.isArray(parsedJson.items) && typeof parsedJson.date === 'string') {
+  if (typeof parsedJson.date === 'string' && Array.isArray(parsedJson.items)) {
+      const validItems = parsedJson.items.filter(isValidReceiptItem);
+      if (validItems.length === 0) {
+          throw new Error("Gemini response validation failed: no valid receipt items.");
+      }
       return {
           date: parsedJson.date,
-          items: parsedJson.items.filter((item: any) => item.name && typeof item.quantity === 'number' && typeof item.price === 'number')
+          items: validItems
       };
   }
-  throw new Error("Parsed JSON does not contain a valid 'items' array and 'date' string.");
+  throw new Error("Gemini response validation failed: missing items array or date.");
 }
 
 async function handleGetAnalysisInsights(ai: GoogleGenAI, payload: { question: string, context: string, data: any[] }): Promise<string> {
@@ -205,7 +246,7 @@ async function handleGenerateExecutiveSummary(ai: GoogleGenAI, payload: { summar
     *   Top Spending Vendor: ${kpis.topVendor?.name || 'N/A'} (${kpis.topVendor?.amount.toLocaleString('fa-IR')} ${t.currency})
 
     **Data Trends:**
-    *   Spending by Category (% of total): ${JSON.stringify(charts.spendingByCategory.labels.map((label, index) => ({ category: label, percentage: ((charts.spendingByCategory.data[index] / kpis.totalSpend) * 100).toFixed(1) + '%' })), null, 2)}
+    *   Spending by Category (% of total): ${JSON.stringify(charts.spendingByCategory.labels.map((label, index) => ({ category: label, percentage: kpis.totalSpend > 0 ? ((charts.spendingByCategory.data[index] / kpis.totalSpend) * 100).toFixed(1) + '%' : '0%' })), null, 2)}
     *   Spending Over Time (Trend): Analyze the daily spending data points to identify trends: ${JSON.stringify(charts.spendingOverTime.data)}
 
     **Your Task:**
@@ -329,11 +370,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 3. Basic payload validation
-    const { task, payload } = req.body;
-    if (!task) {
+    if (!req.body || typeof req.body !== 'object') {
+        return res.status(400).json({ error: 'Bad Request: Body must be a JSON object.' });
+    }
+
+    const { task, payload } = req.body as { task?: unknown; payload?: unknown };
+    if (typeof task !== 'string' || task.trim().length === 0) {
         return res.status(400).json({ error: 'Bad Request: "task" field is missing.' });
     }
-    if (!payload) {
+    if (payload === undefined) {
         return res.status(400).json({ error: 'Bad Request: "payload" field is missing.' });
     }
 
@@ -344,22 +389,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // 4. Route the request based on the task
         switch (task) {
             case 'parseReceipt':
-                data = await handleParseReceipt(ai, payload);
+                data = await handleParseReceipt(ai, payload as { imageBase64: string; categories: string[] });
                 break;
             case 'getAnalysisInsights':
-                data = await handleGetAnalysisInsights(ai, payload);
+                data = await handleGetAnalysisInsights(ai, payload as { question: string; context: string; data: any[] });
                 break;
             case 'generateReportSummary':
-                data = await handleGenerateReportSummary(ai, payload);
+                data = await handleGenerateReportSummary(ai, payload as { totalSpending: number; categorySpending: Record<string, number> });
                 break;
             case 'generateExecutiveSummary':
-                data = await handleGenerateExecutiveSummary(ai, payload);
+                data = await handleGenerateExecutiveSummary(ai, payload as { summaryData: SummaryData });
                 break;
             case 'analyzePriceTrend':
-                data = await handleAnalyzePriceTrend(ai, payload);
+                data = await handleAnalyzePriceTrend(ai, payload as { itemName: string; priceHistory: { date: string; pricePerUnit: number }[] });
                 break;
             case 'getInflationInsight':
-                data = await handleGetInflationInsight(ai, payload);
+                data = await handleGetInflationInsight(ai, payload as { inflationData: InflationData });
                 break;
             default:
                 return res.status(400).json({ error: `Invalid task specified: "${task}"` });
@@ -379,7 +424,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             });
         }
 
-        // Case B: The client sent a malformed payload (e.g., missing summaryData, bad date format)
+        // Case B: The AI returned an invalid response that could not be parsed
+        if (error.message?.includes('Failed to parse Gemini JSON') || error.message?.includes('Gemini response validation failed')) {
+            return res.status(502).json({
+                error: 'The AI service returned an invalid response.',
+                details: error.message
+            });
+        }
+
+        // Case C: The client sent a malformed payload (e.g., missing summaryData, bad date format)
         // This relies on your helper functions throwing specific error messages.
         if (error.message?.includes('Invalid payload') || error.message?.includes('Invalid date format')) {
             return res.status(400).json({
@@ -388,7 +441,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             });
         }
 
-        // Case C: Any other unexpected error in your code
+        // Case D: Any other unexpected error in your code
         return res.status(500).json({
             error: 'An internal server error occurred while processing the AI request.',
             details: error.message
