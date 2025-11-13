@@ -5,6 +5,42 @@ import { OcrResult, SummaryData, Unit, InflationData } from '../shared/types.js'
 import { t } from '../shared/translations.js';
 import { toJalaliDateString } from '../shared/jalali.js';
 
+// Retry wrapper for Gemini API calls with exponential backoff
+async function retryGeminiCall<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = 3,
+    baseDelayMs: number = 1000
+): Promise<T> {
+    let lastError: any;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            return await operation();
+        } catch (error: any) {
+            lastError = error;
+
+            // Only retry on 503/overload errors
+            const isRetryable =
+                error.message?.includes('overloaded') ||
+                error.message?.includes('UNAVAILABLE') ||
+                error.message?.includes('503') ||
+                error.message?.includes('Service Unavailable') ||
+                (error.cause?.message?.includes('503') || error.cause?.message?.includes('UNAVAILABLE'));
+
+            if (!isRetryable || attempt === maxRetries) {
+                throw error;
+            }
+
+            // Exponential backoff: 1s, 2s, 4s
+            const delayMs = baseDelayMs * Math.pow(2, attempt);
+            console.log(`Gemini API 503 error on attempt ${attempt + 1}/${maxRetries + 1}. Retrying in ${delayMs}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+    }
+
+    throw lastError;
+}
+
 // --- Internal Handlers for each Gemini Task ---
 
 async function handleParseReceipt(ai: GoogleGenAI, payload: { imageBase64: string, categories: string[] }): Promise<OcrResult> {
@@ -40,11 +76,13 @@ async function handleParseReceipt(ai: GoogleGenAI, payload: { imageBase64: strin
     Return the output ONLY as a JSON object matching the provided schema. Do not include any extra text or explanations.
   `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: { parts: [{ text: prompt }, { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } }] },
-    config: { responseMimeType: "application/json", responseSchema: receiptSchema }
-  });
+  const response = await retryGeminiCall(() =>
+    ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts: [{ text: prompt }, { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } }] },
+      config: { responseMimeType: "application/json", responseSchema: receiptSchema }
+    })
+  );
 
   let jsonText = (response.text ?? '').trim();
   if (jsonText.startsWith('```json')) {
@@ -96,7 +134,9 @@ async function handleGetAnalysisInsights(ai: GoogleGenAI, payload: { question: s
 
     Be factual, data-driven, and professional.
     `;
-    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+    const response = await retryGeminiCall(() =>
+        ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt })
+    );
     return (response.text ?? '').trim();
 }
 
@@ -128,7 +168,9 @@ async function handleGenerateReportSummary(ai: GoogleGenAI, payload: { totalSpen
 
     Format the output clearly with paragraphs for each section.
     `;
-    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+    const response = await retryGeminiCall(() =>
+        ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt })
+    );
     return (response.text ?? '').trim();
 }
 
@@ -175,7 +217,9 @@ async function handleGenerateExecutiveSummary(ai: GoogleGenAI, payload: { summar
 
     Your tone should be helpful, professional, and data-driven.
     `;
-    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+    const response = await retryGeminiCall(() =>
+        ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt })
+    );
     return (response.text ?? '').trim();
 }
 
@@ -224,7 +268,9 @@ async function handleAnalyzePriceTrend(ai: GoogleGenAI, payload: { itemName: str
     3.  Provide a short, actionable insight or recommendation in a new paragraph. For example: "This sharp increase suggests it may be beneficial to explore alternative suppliers," or "The price has remained stable, indicating a reliable supplier relationship."
     4.  Keep the entire response concise, professional, and in Persian. The response should be 2-3 sentences long.
     `;
-    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+    const response = await retryGeminiCall(() =>
+        ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt })
+    );
     return (response.text ?? '').trim();
 }
 
@@ -259,7 +305,9 @@ async function handleGetInflationInsight(ai: GoogleGenAI, payload: { inflationDa
 
     Be concise, data-driven, and professional.
     `;
-    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+    const response = await retryGeminiCall(() =>
+        ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt })
+    );
     return (response.text ?? '').trim();
 }
 
