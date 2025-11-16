@@ -226,6 +226,8 @@ export const t = {
 
   // Smart Suggestions
   todaysSmartSuggestions: "پیشنهادهای هوشمند امروز",
+  expandSuggestions: (count: number) => `نمایش ${count} پیشنهاد دیگر`,
+  collapseSuggestions: "بستن پیشنهادهای اضافی",
   suggestionReasonStockLow: (stock: number, unit: string, days: number) => `موجودی کم است (حدود ${stock.toFixed(1)} ${unit}). این مقدار تقریباً برای ${days} روز آینده کافی است.`,
   suggestionReasonDepleted: `موجودی این کالا احتمالاً تمام شده است.`,
   suggestionReasonInflation: (percent: string) => `هشدار قیمت! قیمت این کالا اخیراً ${percent}% افزایش یافته. خرید یا بررسی جایگزین توصیه می‌شود.`,

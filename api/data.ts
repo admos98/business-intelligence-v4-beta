@@ -10,6 +10,10 @@ interface StoredData {
     vendors: unknown;
     categoryVendorMap: unknown;
     itemInfoMap: unknown;
+    posItems?: unknown;
+    sellTransactions?: unknown;
+    recipes?: unknown;
+    stockEntries?: unknown;
 }
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -27,6 +31,7 @@ const isValidStoredData = (value: unknown): value is StoredData => {
         Array.isArray(vendors) &&
         isPlainObject(categoryVendorMap) &&
         isPlainObject(itemInfoMap)
+        // posItems, sellTransactions, recipes, stockEntries are optional
     );
 };
 
@@ -96,6 +101,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     vendors: [],
                     categoryVendorMap: {},
                     itemInfoMap: {},
+                    posItems: [],
+                    sellTransactions: [],
+                    recipes: [],
+                    stockEntries: {},
                 });
             }
 

@@ -194,9 +194,37 @@ const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack, onLogout,}) => 
     addToast(t.exportJsonSuccess, 'success');
   };
 
+  const handleExportCsv = () => {
+    if (allItems.length === 0) return;
+
+    const headers = ['Item Name', 'Unit', 'Category', 'Last Price', 'Avg Price', 'Price Trend'];
+    const rows = allItems.map(item => {
+      const priceHistory = getItemPriceHistory(item.name, item.unit);
+      const avgPrice = priceHistory.length > 0 ? priceHistory.reduce((sum, p) => sum + p.pricePerUnit, 0) / priceHistory.length : 0;
+      const trend = priceHistory.length > 1 ? (priceHistory[priceHistory.length - 1].pricePerUnit > priceHistory[0].pricePerUnit ? 'Up' : 'Down') : 'N/A';
+      return [item.name, item.unit, item.category, String(priceHistory[priceHistory.length - 1]?.pricePerUnit || ''), String(avgPrice.toFixed(2)), trend];
+    });
+    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mehrnoosh_cafe_items_master_list_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast(t.exportJsonSuccess, 'success');
+  };
+
   return (
     <>
       <Header title={t.itemsDashboardTitle} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout}>
+        <button
+          onClick={handleExportCsv}
+          disabled={allItems.length === 0}
+          className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle disabled:opacity-50 disabled:cursor-not-allowed mr-2"
+        >
+          {t.exportCsv || 'صادر کردن CSV'}
+        </button>
         <button
           onClick={handleExportJson}
           disabled={allItems.length === 0}

@@ -1,4 +1,4 @@
-import { ShoppingList, Vendor } from '../../shared/types';
+import { ShoppingList, Vendor, POSItem, SellTransaction, Recipe, StockEntry } from '../../shared/types';
 
 interface StoredData {
     lists: ShoppingList[];
@@ -6,6 +6,10 @@ interface StoredData {
     vendors: Vendor[];
     categoryVendorMap: Record<string, string>;
     itemInfoMap: Record<string, { unit: string; category: string }>;
+    posItems?: POSItem[];
+    sellTransactions?: SellTransaction[];
+    recipes?: Recipe[];
+    stockEntries?: Record<string, StockEntry>;
 }
 
 interface ApiErrorResponse {

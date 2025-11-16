@@ -33,6 +33,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
   const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
+  const [expandSuggestions, setExpandSuggestions] = useState(false);
 
   const importInputRef = useRef<HTMLInputElement>(null);
   const { addToast } = useToast();
@@ -112,6 +113,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
   const smartSuggestions = getSmartSuggestions();
   const pendingPayments = getPendingPayments();
   const expenseForecast = getExpenseForecast();
+
+  const displayedSuggestions = expandSuggestions ? smartSuggestions : smartSuggestions.slice(0, 6);
+  const hiddenSuggestionsCount = Math.max(0, smartSuggestions.length - 6);
 
   const filteredLists = useMemo(() => {
     const sortedLists = [...lists].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -211,8 +215,18 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
                     <div className="md:col-span-2">
                         <h4 className="font-bold text-primary mb-3">{t.todaysSmartSuggestions}</h4>
                         {smartSuggestions.length > 0 ? (
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                {smartSuggestions.map(s => <SmartSuggestionCard key={s.name+s.unit} suggestion={s} onAdd={handleAddItemFromSuggestion} isAdded={isItemInTodaysPendingList(s.name, s.unit)} />)}
+                            <div className="space-y-3">
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                    {displayedSuggestions.map(s => <SmartSuggestionCard key={s.name+s.unit} suggestion={s} onAdd={handleAddItemFromSuggestion} isAdded={isItemInTodaysPendingList(s.name, s.unit)} />)}
+                                </div>
+                                {hiddenSuggestionsCount > 0 && (
+                                    <button
+                                        onClick={() => setExpandSuggestions(!expandSuggestions)}
+                                        className="w-full mt-3 px-4 py-2 text-sm font-medium text-accent bg-accent/10 rounded-lg hover:bg-accent/20 transition-colors border border-accent/30"
+                                    >
+                                        {expandSuggestions ? t.collapseSuggestions : t.expandSuggestions(hiddenSuggestionsCount)}
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <p className="text-center text-secondary py-4">{t.noSuggestions}</p>

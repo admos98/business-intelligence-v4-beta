@@ -5,7 +5,12 @@ import AnalysisDashboard from './pages/AnalysisDashboard';
 import VendorsDashboard from './pages/VendorsDashboard';
 import SummaryDashboard from './pages/SummaryDashboard';
 import ItemsDashboard from './pages/ItemsDashboard';
+import SellDashboard from './pages/SellDashboard';
+import RecipeDashboard from './pages/RecipeDashboard';
+import SellAnalysisDashboard from './pages/SellAnalysisDashboard';
+import FinancialDashboard from './pages/FinancialDashboard';
 import LoginPage from './pages/LoginPage';
+import Navbar from './components/common/Navbar';
 import { ToastProvider } from './components/common/Toast';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { SafeSVG } from './components/common/SafeSVG';
@@ -14,7 +19,7 @@ import { useShoppingStore } from './store/useShoppingStore';
 import { t } from '../shared/translations';
 import { logoSvg } from './assets/logo';
 
-type View = 'dashboard' | 'list' | 'analysis' | 'vendors' | 'summary' | 'items';
+type View = 'dashboard' | 'list' | 'analysis' | 'vendors' | 'summary' | 'items' | 'sell' | 'recipes' | 'sellAnalysis' | 'financial';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('dashboard');
@@ -76,6 +81,14 @@ const App: React.FC = () => {
         return <ItemsDashboard onBack={() => handleNavigate('dashboard')} {...commonProps} />;
       case 'summary':
         return <SummaryDashboard onBack={() => handleNavigate('dashboard')} {...commonProps} />;
+      case 'sell':
+        return <SellDashboard onLogout={handleLogout} onViewSellAnalysis={() => handleNavigate('sellAnalysis')} />;
+      case 'recipes':
+        return <RecipeDashboard onLogout={handleLogout} />;
+      case 'sellAnalysis':
+        return <SellAnalysisDashboard onLogout={handleLogout} />;
+      case 'financial':
+        return <FinancialDashboard onLogout={handleLogout} />;
       case 'dashboard':
       default:
         return (
@@ -106,8 +119,11 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <ToastProvider>
-        <div className="min-h-screen bg-background text-primary font-sans">
-          {renderView()}
+        <div className="min-h-screen bg-background text-primary font-sans flex md:flex-row">
+          <Navbar currentView={view} onNavigate={handleNavigate} onLogout={handleLogout} />
+          <main className="flex-1 w-full md:w-auto">
+            {renderView()}
+          </main>
         </div>
       </ToastProvider>
     </ErrorBoundary>

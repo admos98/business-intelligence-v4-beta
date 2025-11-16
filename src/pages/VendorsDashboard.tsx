@@ -69,9 +69,37 @@ const VendorsDashboard: React.FC<VendorsDashboardProps> = ({ onBack, onLogout })
     addToast(t.exportJsonSuccess, 'success');
   };
 
+  const handleExportCsv = () => {
+    if (vendors.length === 0) return;
+
+    const headers = ['Vendor Name', 'Contact Person', 'Phone', 'Total Spent', 'Purchase Count'];
+    const rows = vendors
+      .sort((a, b) => a.name.localeCompare(b.name, 'fa'))
+      .map(vendor => {
+        const stats = vendorStats.get(vendor.id) || { totalSpent: 0, purchaseCount: 0 };
+        return [vendor.name, vendor.contactPerson || '', vendor.phone || '', String(stats.totalSpent), String(stats.purchaseCount)];
+      });
+    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mehrnoosh_cafe_vendors_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast(t.exportJsonSuccess, 'success');
+  };
+
   return (
     <>
       <Header title={t.vendorsDashboardTitle} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout}>
+        <button
+          onClick={handleExportCsv}
+          disabled={vendors.length === 0}
+          className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle disabled:opacity-50 disabled:cursor-not-allowed mr-2"
+        >
+          {t.exportCsv || 'صادر کردن CSV'}
+        </button>
         <button
           onClick={handleExportJson}
           disabled={vendors.length === 0}

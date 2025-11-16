@@ -191,3 +191,128 @@ export interface InflationData {
     topItemRises: InflationDetail[];
     topCategoryRises: InflationDetail[];
 }
+
+// ============================================
+// SELL / POS TYPES
+// ============================================
+
+export interface POSItem {
+  id: string;
+  name: string;
+  category: string;
+  sellPrice: number; // Price per unit
+  unit: Unit;
+  isRecipe?: boolean; // If true, this item is sold via recipe, not raw item
+  recipeId?: string; // Link to recipe if isRecipe=true
+  customizations?: POSCustomization[]; // E.g., syrup options, size modifiers
+}
+
+export interface POSCustomization {
+  id: string;
+  name: string; // e.g., "Syrup Type", "Size"
+  type: 'select' | 'number' | 'text';
+  options?: string[]; // For select type: ["Vanilla", "Chocolate"]
+  priceModifier?: number; // Additional cost for this customization
+}
+
+export interface SellTransaction {
+  id: string;
+  date: string; // ISO string
+  items: SellTransactionItem[];
+  totalAmount: number; // Revenue
+  paymentMethod: PaymentMethod;
+  notes?: string;
+  discountAmount?: number;
+}
+
+export interface SellTransactionItem {
+  id: string;
+  posItemId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  customizationChoices?: Record<string, string | number>; // Customization selections
+  costOfGoods?: number; // Calculated raw cost if from recipe
+}
+
+// ============================================
+// RECIPE TYPES
+// ============================================
+
+export interface Recipe {
+  id: string;
+  name: string;
+  category: string;
+  baseSellPrice: number; // Base price, can be overridden per transaction
+  ingredients: RecipeIngredient[];
+  prepNotes?: string;
+  createdAt: string; // ISO string
+}
+
+export interface RecipeIngredient {
+  id: string;
+  itemName: string; // Name of bought item
+  itemUnit: Unit; // Unit of bought item
+  requiredQuantity: number; // How much of this item is needed
+  costPerUnit?: number; // Cached cost; recalculate on use
+}
+
+// ============================================
+// STOCK TYPES
+// ============================================
+
+export interface StockEntry {
+  itemName: string;
+  itemUnit: Unit;
+  quantity: number; // Current available quantity
+  lastUpdated: string; // ISO string
+}
+
+// ============================================
+// ENHANCED SELL ANALYTICS TYPES
+// ============================================
+
+export interface SellSummaryData {
+  kpis: {
+    totalRevenue: number;
+    totalTransactions: number;
+    avgTransactionValue: number;
+    topItem: { name: string; quantity: number; revenue: number } | null;
+    topCategory: { name: string; revenue: number } | null;
+  };
+  charts: {
+    revenueOverTime: { labels: string[]; data: number[] };
+    revenueByCategory: { labels: string[]; data: number[] };
+    itemPopularity: { labels: string[]; data: number[] }; // By quantity sold
+  };
+  period: {
+    startDate: Date;
+    endDate: Date;
+  };
+}
+
+export interface FinancialOverviewData {
+  buy: {
+    totalSpend: number;
+    itemCount: number;
+    avgDailySpend: number;
+  };
+  sell: {
+    totalRevenue: number;
+    transactionCount: number;
+    avgTransactionValue: number;
+  };
+  recipes: {
+    totalCostOfGoods: number; // Sum of all recipe ingredient costs sold
+  };
+  profitAnalysis: {
+    grossProfit: number; // Revenue - Cost of Goods Sold (COGS)
+    grossMargin: number; // Gross Profit / Revenue * 100
+    netProfit: number; // Gross Profit - Other Expenses (simplified: just COGS for now)
+  };
+  period: {
+    startDate: Date;
+    endDate: Date;
+  };
+}

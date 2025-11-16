@@ -1,7 +1,7 @@
 // src/store/useShoppingStore.ts
 
 import { create } from 'zustand';
-import { ShoppingList, ShoppingItem, CafeCategory, Vendor, OcrResult, Unit, ItemStatus, PaymentStatus, PaymentMethod, PendingPaymentItem, SmartSuggestion, SummaryData, RecentPurchaseItem, MasterItem, AuthSlice, ShoppingState, InflationData, InflationDetail, InflationPoint } from '../../shared/types.ts';
+import { ShoppingList, ShoppingItem, CafeCategory, Vendor, OcrResult, Unit, ItemStatus, PaymentStatus, PaymentMethod, PendingPaymentItem, SmartSuggestion, SummaryData, RecentPurchaseItem, MasterItem, AuthSlice, ShoppingState, InflationData, InflationDetail, InflationPoint, POSItem, SellTransaction, Recipe, StockEntry, SellSummaryData, FinancialOverviewData } from '../../shared/types.ts';
 import { t } from '../../shared/translations.ts';
 import { parseJalaliDate, toJalaliDateString, gregorianToJalali } from '../../shared/jalali.ts';
 import { fetchData, saveData } from '../lib/api.ts';
@@ -15,6 +15,12 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   vendors: Vendor[];
   categoryVendorMap: Record<string, string>; // categoryName -> vendorId
   itemInfoMap: Record<string, { unit: Unit, category: string }>;
+
+  // POS / SELL DATA
+  posItems: POSItem[];
+  sellTransactions: SellTransaction[];
+  recipes: Recipe[];
+  stockEntries: Record<string, StockEntry>; // itemName-unit key -> StockEntry
 
   hydrateFromCloud: () => Promise<void>;
 
@@ -40,6 +46,28 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   // Item Actions
   updateMasterItem: (originalName: string, originalUnit: Unit, updates: { name: string; unit: Unit; category: string }) => void;
 
+  // POS / SELL ACTIONS
+  addPOSItem: (data: Omit<POSItem, 'id'>) => string;
+  updatePOSItem: (posItemId: string, updates: Partial<POSItem>) => void;
+  deletePOSItem: (posItemId: string) => void;
+  getPOSItemsByCategory: (category: string) => POSItem[];
+  getFrequentPOSItems: (limit: number) => POSItem[]; // Most sold items
+
+  // RECIPE ACTIONS
+  addRecipe: (recipe: Omit<Recipe, 'id' | 'createdAt'>) => string;
+  updateRecipe: (recipeId: string, updates: Partial<Recipe>) => void;
+  deleteRecipe: (recipeId: string) => void;
+  calculateRecipeCost: (recipeId: string) => number; // Total ingredient cost
+
+  // SELL TRANSACTION ACTIONS
+  addSellTransaction: (transaction: Omit<SellTransaction, 'id' | 'date'>) => string;
+  getSellTransactions: (period: SummaryPeriod) => SellTransaction[];
+  deleteSellTransaction: (transactionId: string) => void;
+
+  // STOCK MANAGEMENT
+  updateStock: (itemName: string, itemUnit: Unit, quantityChange: number) => void; // Positive or negative
+  getStock: (itemName: string, itemUnit: Unit) => number; // Current quantity
+  validateStockForRecipe: (recipeId: string) => boolean; // Check if enough inventory
 
   // Computed
   allCategories: () => string[];
@@ -57,6 +85,9 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   getItemPriceHistory: (name: string, unit: Unit) => { date: string, pricePerUnit: number }[];
   isItemInTodaysPendingList: (name: string, unit: Unit) => boolean;
 
+  // SELL ANALYTICS COMPUTED
+  getSellSummaryData: (period: SummaryPeriod) => SellSummaryData | null;
+  getFinancialOverview: (period: SummaryPeriod) => FinancialOverviewData | null;
 
   // Import/Export
   importData: (jsonData: string) => Promise<void>;
@@ -81,6 +112,10 @@ const emptyState = {
   vendors: [],
   categoryVendorMap: {},
   itemInfoMap: {},
+  posItems: [],
+  sellTransactions: [],
+  recipes: [],
+  stockEntries: {},
 };
 
 // --- Debounced save function ---
@@ -105,6 +140,10 @@ const debouncedSaveData = (state: FullShoppingState) => {
             vendors: state.vendors,
             categoryVendorMap: state.categoryVendorMap,
             itemInfoMap: state.itemInfoMap,
+            posItems: state.posItems,
+            sellTransactions: state.sellTransactions,
+            recipes: state.recipes,
+            stockEntries: state.stockEntries,
         };
         saveData(dataToSave).catch((err: unknown) => {
             const errorMessage = err instanceof Error ? err.message : "Auto-save failed";
@@ -148,7 +187,19 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           try {
               const data = await fetchData();
               if (data && data.lists) {
-                  set({ ...data, isHydrating: false });
+                  const hydratedState: Partial<FullShoppingState> = {
+                      lists: data.lists,
+                      customCategories: data.customCategories,
+                      vendors: data.vendors,
+                      categoryVendorMap: data.categoryVendorMap,
+                      itemInfoMap: data.itemInfoMap && typeof data.itemInfoMap === 'object' ? (data.itemInfoMap as Record<string, { unit: Unit; category: string }>) : {},
+                      posItems: data.posItems || [],
+                      sellTransactions: data.sellTransactions || [],
+                      recipes: data.recipes || [],
+                      stockEntries: data.stockEntries || {},
+                      isHydrating: false,
+                  };
+                  set(hydratedState);
               } else {
                   set({ ...emptyState, isHydrating: false });
               }
@@ -448,10 +499,12 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
           if (allPurchasesOfItem.length > 0) {
               const latest = allPurchasesOfItem[0];
+                            if (latest.paidPrice && latest.purchasedAmount && latest.purchasedAmount > 0) {
               return {
                   pricePerUnit: latest.paidPrice! / latest.purchasedAmount!,
                   vendorId: latest.vendorId,
                   lastAmount: latest.purchasedAmount
+                            }
               };
           }
           return {};
@@ -673,83 +726,97 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         };
       },
       getSmartSuggestions: () => {
-        const allPurchases = get().lists
-            .flatMap(list => list.items.map(item => ({...item, purchaseDate: new Date(list.createdAt)})))
-            .filter(item => item.status === ItemStatus.Bought && item.purchasedAmount && item.purchasedAmount > 0)
-            .sort((a, b) => a.purchaseDate.getTime() - b.purchaseDate.getTime());
+        // Purchase-based events (existing logic)
+        const purchaseEvents = get().lists
+          .flatMap(list => list.items.map(item => ({ ...item, purchaseDate: new Date(list.createdAt) })))
+          .filter(item => item.status === ItemStatus.Bought && item.purchasedAmount && item.purchasedAmount > 0)
+          .sort((a, b) => a.purchaseDate.getTime() - b.purchaseDate.getTime());
 
-        const itemHistory = new Map<string, {
-            purchases: { date: Date, amount: number }[],
-            name: string,
-            unit: Unit,
-            category: string
-        }>();
+        const purchaseHistory = new Map<string, { purchases: { date: Date; amount: number }[]; name: string; unit: Unit; category: string }>();
+        purchaseEvents.forEach(item => {
+          const key = `${item.name}-${item.unit}`;
+          if (!purchaseHistory.has(key)) purchaseHistory.set(key, { purchases: [], name: item.name, unit: item.unit, category: item.category });
+          purchaseHistory.get(key)!.purchases.push({ date: item.purchaseDate, amount: item.purchasedAmount! });
+        });
 
-        allPurchases.forEach(item => {
-            const key = `${item.name}-${item.unit}`;
-            if (!itemHistory.has(key)) {
-                itemHistory.set(key, { purchases: [], name: item.name, unit: item.unit, category: item.category });
+        // Build consumption history from sell transactions + recipes (inferred ingredient consumption)
+        const consumptionHistory = new Map<string, { consumptions: { date: Date; amount: number }[] }>();
+        const sellTx = get().sellTransactions || [];
+        sellTx.forEach(tx => {
+          const txDate = new Date(tx.date);
+          tx.items.forEach(soldItem => {
+            const pos = get().posItems.find(p => p.id === soldItem.posItemId);
+            if (pos && pos.recipeId) {
+              const recipe = get().recipes.find(r => r.id === pos.recipeId);
+              if (recipe) {
+                recipe.ingredients.forEach(ing => {
+                  const key = `${ing.itemName}-${ing.itemUnit}`;
+                  if (!consumptionHistory.has(key)) consumptionHistory.set(key, { consumptions: [] });
+                  consumptionHistory.get(key)!.consumptions.push({ date: txDate, amount: ing.requiredQuantity * soldItem.quantity });
+                });
+              }
+            } else {
+              // Map sold item to master item if possible
+              const name = pos ? pos.name : soldItem.name;
+              const info = get().itemInfoMap[name];
+              const unit = info?.unit || Unit.Piece;
+              const key = `${name}-${unit}`;
+              if (!consumptionHistory.has(key)) consumptionHistory.set(key, { consumptions: [] });
+              consumptionHistory.get(key)!.consumptions.push({ date: txDate, amount: soldItem.quantity });
             }
-            itemHistory.get(key)!.purchases.push({ date: item.purchaseDate, amount: item.purchasedAmount! });
+          });
         });
 
         const suggestions: SmartSuggestion[] = [];
-        const today = new Date(new Date().setHours(0, 0, 0, 0));
         const oneDay = 24 * 60 * 60 * 1000;
-        const REORDER_BUFFER_DAYS = 3; // Suggest reordering when stock is below 3 days' worth of supply.
+        const REORDER_BUFFER_DAYS = 3;
 
-        itemHistory.forEach((history) => {
-            // We need at least two purchases to calculate a meaningful consumption rate.
-            if (history.purchases.length < 2) return;
+        // Primary: use purchase history as baseline, deduct consumption inferred from sales
+        purchaseHistory.forEach(history => {
+          if (history.purchases.length < 1) return; // need at least one purchase baseline
 
-            const firstPurchase = history.purchases[0];
-            const lastPurchase = history.purchases[history.purchases.length - 1];
+          const firstPurchase = history.purchases[0];
+          const lastPurchase = history.purchases[history.purchases.length - 1];
 
-            const totalQuantityPurchased = history.purchases.reduce((sum, p) => sum + p.amount, 0);
-            // Ensure the duration is at least 1 day to avoid division by zero and get a rate for items bought frequently.
-            const totalDurationDays = Math.max(1, Math.round((lastPurchase.date.getTime() - firstPurchase.date.getTime()) / oneDay));
+          const totalQuantityPurchased = history.purchases.reduce((s, p) => s + p.amount, 0);
+          const totalDurationDays = Math.max(1, Math.round((lastPurchase.date.getTime() - firstPurchase.date.getTime()) / oneDay));
+          const dailyConsumptionRateFromPurchases = totalQuantityPurchased / totalDurationDays;
 
-            const dailyConsumptionRate = totalQuantityPurchased / totalDurationDays;
+          const key = `${history.name}-${history.unit}`;
+          const consumptions = consumptionHistory.get(key)?.consumptions || [];
+          const consumedSinceLastPurchase = consumptions.filter(c => c.date.getTime() > lastPurchase.date.getTime()).reduce((s, c) => s + c.amount, 0);
 
-            // If the consumption rate is zero, we can't make a prediction.
-            if (dailyConsumptionRate <= 0) return;
+          const estimatedCurrentStock = Math.max(0, lastPurchase.amount - consumedSinceLastPurchase);
 
-            const daysSinceLastPurchase = Math.round((today.getTime() - lastPurchase.date.getTime()) / oneDay);
-            const consumedAmount = dailyConsumptionRate * daysSinceLastPurchase;
-            const estimatedCurrentStock = Math.max(0, lastPurchase.amount - consumedAmount);
+          // Prefer sales-derived rate if sufficient data, else fall back to purchase-derived rate
+          let dailyConsumptionRate = dailyConsumptionRateFromPurchases;
+          if (consumptions.length >= 2) {
+            const cFirst = consumptions[0].date;
+            const cLast = consumptions[consumptions.length - 1].date;
+            const totalConsumed = consumptions.reduce((s, c) => s + c.amount, 0);
+            const duration = Math.max(1, Math.round((cLast.getTime() - cFirst.getTime()) / oneDay));
+            dailyConsumptionRate = totalConsumed / duration;
+          }
 
-            const reorderPointQuantity = dailyConsumptionRate * REORDER_BUFFER_DAYS;
+          if (dailyConsumptionRate <= 0) return;
 
-            if (estimatedCurrentStock <= 0) {
-                suggestions.push({
-                    name: history.name, unit: history.unit, category: history.category,
-                    lastPurchaseDate: lastPurchase.date.toISOString(),
-                    reason: t.suggestionReasonDepleted,
-                    priority: 'high'
-                });
-            } else if (estimatedCurrentStock <= reorderPointQuantity) {
-                const daysLeft = Math.ceil(estimatedCurrentStock / dailyConsumptionRate); // Use ceil to be conservative
-                suggestions.push({
-                    name: history.name, unit: history.unit, category: history.category,
-                    lastPurchaseDate: lastPurchase.date.toISOString(),
-                    reason: t.suggestionReasonStockLow(estimatedCurrentStock, history.unit, daysLeft),
-                    priority: 'medium'
-                });
-            }
+          const reorderPointQuantity = dailyConsumptionRate * REORDER_BUFFER_DAYS;
+
+          if (estimatedCurrentStock <= 0) {
+            suggestions.push({ name: history.name, unit: history.unit, category: history.category, lastPurchaseDate: lastPurchase.date.toISOString(), reason: t.suggestionReasonDepleted, priority: 'high' });
+          } else if (estimatedCurrentStock <= reorderPointQuantity) {
+            const daysLeft = Math.ceil(estimatedCurrentStock / dailyConsumptionRate);
+            suggestions.push({ name: history.name, unit: history.unit, category: history.category, lastPurchaseDate: lastPurchase.date.toISOString(), reason: t.suggestionReasonStockLow(estimatedCurrentStock, history.unit, daysLeft), priority: 'medium' });
+          }
         });
 
-        const priorityRank: Record<SmartSuggestion['priority'], number> = {
-            high: 0,
-            medium: 1,
-            low: 2,
-        };
+        // Conservative fallback: do not suggest items that only have sales consumption but no purchase baseline
 
+        const priorityRank: Record<SmartSuggestion['priority'], number> = { high: 0, medium: 1, low: 2 };
         return suggestions.sort((a, b) => {
-            const priorityDelta = priorityRank[a.priority] - priorityRank[b.priority];
-            if (priorityDelta !== 0) {
-                return priorityDelta;
-            }
-            return a.name.localeCompare(b.name, 'fa');
+          const priorityDelta = priorityRank[a.priority] - priorityRank[b.priority];
+          if (priorityDelta !== 0) return priorityDelta;
+          return a.name.localeCompare(b.name, 'fa');
         });
       },
 
@@ -901,6 +968,10 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 vendors?: Vendor[];
                 categoryVendorMap?: Record<string, string>;
                 itemInfoMap?: Record<string, { unit: string; category: string }>;
+                posItems?: unknown[];
+                sellTransactions?: unknown[];
+                recipes?: unknown[];
+                stockEntries?: Record<string, unknown>;
             };
 
             if (Array.isArray(data.lists)) {
@@ -931,10 +1002,14 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                     vendors: Array.isArray(data.vendors) ? data.vendors : [],
                     categoryVendorMap: data.categoryVendorMap && typeof data.categoryVendorMap === 'object' ? data.categoryVendorMap : {},
                     itemInfoMap: data.itemInfoMap && typeof data.itemInfoMap === 'object' ? data.itemInfoMap : {},
+                    posItems: Array.isArray(data.posItems) ? (data.posItems as POSItem[]) : [],
+                    sellTransactions: Array.isArray(data.sellTransactions) ? (data.sellTransactions as SellTransaction[]) : [],
+                    recipes: Array.isArray(data.recipes) ? (data.recipes as Recipe[]) : [],
+                    stockEntries: data.stockEntries && typeof data.stockEntries === 'object' ? (data.stockEntries as Record<string, StockEntry>) : {},
                 };
 
-                set(cleanedData);
-                await saveData(cleanedData);
+                set(cleanedData as Partial<FullShoppingState>);
+                await saveData(cleanedData as any);
             } else {
                 throw new Error("Invalid data format: lists must be an array");
             }
@@ -952,7 +1027,333 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             vendors: get().vendors,
             categoryVendorMap: get().categoryVendorMap,
             itemInfoMap: get().itemInfoMap,
+            posItems: get().posItems,
+            sellTransactions: get().sellTransactions,
+            recipes: get().recipes,
+            stockEntries: get().stockEntries,
         };
         return JSON.stringify(data, null, 2);
+      },
+
+      // ========== POS ITEMS ACTIONS ==========
+      addPOSItem: (data) => {
+        const newPOSItem: POSItem = {
+          id: `pos-${Date.now()}`,
+          ...data,
+        };
+        set(state => ({ posItems: [...state.posItems, newPOSItem] }));
+        debouncedSaveData(get());
+        return newPOSItem.id;
+      },
+
+      updatePOSItem: (posItemId, updates) => {
+        set(state => ({
+          posItems: state.posItems.map(item => item.id === posItemId ? { ...item, ...updates } : item)
+        }));
+        debouncedSaveData(get());
+      },
+
+      deletePOSItem: (posItemId) => {
+        set(state => ({ posItems: state.posItems.filter(item => item.id !== posItemId) }));
+        debouncedSaveData(get());
+      },
+
+      getPOSItemsByCategory: (category) => {
+        return get().posItems.filter(item => item.category === category);
+      },
+
+      getFrequentPOSItems: (limit) => {
+        const itemSaleCount = new Map<string, number>();
+        get().sellTransactions.forEach(transaction => {
+          transaction.items.forEach(item => {
+            itemSaleCount.set(item.posItemId, (itemSaleCount.get(item.posItemId) || 0) + item.quantity);
+          });
+        });
+
+        return get().posItems
+          .sort((a, b) => (itemSaleCount.get(b.id) || 0) - (itemSaleCount.get(a.id) || 0))
+          .slice(0, limit);
+      },
+
+      // ========== RECIPE ACTIONS ==========
+      addRecipe: (recipe) => {
+        const newRecipe: Recipe = {
+          id: `recipe-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          ...recipe,
+        };
+        set(state => ({ recipes: [...state.recipes, newRecipe] }));
+        debouncedSaveData(get());
+        return newRecipe.id;
+      },
+
+      updateRecipe: (recipeId, updates) => {
+        set(state => ({
+          recipes: state.recipes.map(recipe => recipe.id === recipeId ? { ...recipe, ...updates } : recipe)
+        }));
+        debouncedSaveData(get());
+      },
+
+      deleteRecipe: (recipeId) => {
+        set(state => ({
+          recipes: state.recipes.filter(recipe => recipe.id !== recipeId),
+          posItems: state.posItems.filter(item => item.recipeId !== recipeId),
+        }));
+        debouncedSaveData(get());
+      },
+
+      calculateRecipeCost: (recipeId) => {
+        const recipe = get().recipes.find(r => r.id === recipeId);
+        if (!recipe) return 0;
+
+        let totalCost = 0;
+        recipe.ingredients.forEach(ingredient => {
+          const latestInfo = get().getLatestPurchaseInfo(ingredient.itemName, ingredient.itemUnit);
+          const costPerUnit = latestInfo.pricePerUnit || 0;
+          totalCost += costPerUnit * ingredient.requiredQuantity;
+        });
+        return totalCost;
+      },
+
+      // ========== SELL TRANSACTION ACTIONS ==========
+      addSellTransaction: (transaction) => {
+        const newTransaction: SellTransaction = {
+          id: `trans-${Date.now()}`,
+          date: new Date().toISOString(),
+          ...transaction,
+        };
+
+        // Update stock for each item sold
+        newTransaction.items.forEach(item => {
+          // If this is a recipe item, deduct ingredients
+          const posItem = get().posItems.find(p => p.id === item.posItemId);
+          if (posItem && posItem.recipeId) {
+            const recipe = get().recipes.find(r => r.id === posItem.recipeId);
+            if (recipe) {
+              recipe.ingredients.forEach(ingredient => {
+                get().updateStock(ingredient.itemName, ingredient.itemUnit, -(ingredient.requiredQuantity * item.quantity));
+              });
+            }
+          }
+        });
+
+        set(state => ({ sellTransactions: [...state.sellTransactions, newTransaction] }));
+        debouncedSaveData(get());
+        return newTransaction.id;
+      },
+
+      getSellTransactions: (period) => {
+        const now = new Date();
+        let startDate = new Date();
+        const endDate = new Date(now);
+        endDate.setHours(23, 59, 59, 999);
+
+        switch (period) {
+          case '7d': startDate.setDate(now.getDate() - 6); break;
+          case '30d': startDate.setDate(now.getDate() - 29); break;
+          case 'mtd': startDate = new Date(now.getFullYear(), now.getMonth(), 1); break;
+          case 'ytd': startDate = new Date(now.getFullYear(), 0, 1); break;
+          case 'all': startDate = new Date(0); break;
+        }
+        startDate.setHours(0, 0, 0, 0);
+
+        return get().sellTransactions.filter(trans => {
+          const transDate = new Date(trans.date);
+          return transDate >= startDate && transDate <= endDate;
+        });
+      },
+
+      deleteSellTransaction: (transactionId) => {
+        set(state => ({ sellTransactions: state.sellTransactions.filter(trans => trans.id !== transactionId) }));
+        debouncedSaveData(get());
+      },
+
+      // ========== STOCK MANAGEMENT ==========
+      updateStock: (itemName, itemUnit, quantityChange) => {
+        const key = `${itemName}-${itemUnit}`;
+        set(state => {
+          const existing = state.stockEntries[key];
+          const currentQuantity = existing?.quantity || 0;
+          return {
+            stockEntries: {
+              ...state.stockEntries,
+              [key]: {
+                itemName,
+                itemUnit,
+                quantity: Math.max(0, currentQuantity + quantityChange),
+                lastUpdated: new Date().toISOString(),
+              }
+            }
+          };
+        });
+        debouncedSaveData(get());
+      },
+
+      getStock: (itemName, itemUnit) => {
+        const key = `${itemName}-${itemUnit}`;
+        return get().stockEntries[key]?.quantity || 0;
+      },
+
+      validateStockForRecipe: (recipeId) => {
+        const recipe = get().recipes.find(r => r.id === recipeId);
+        if (!recipe) return false;
+
+        return recipe.ingredients.every(ingredient => {
+          const available = get().getStock(ingredient.itemName, ingredient.itemUnit);
+          return available >= ingredient.requiredQuantity;
+        });
+      },
+
+      // ========== SELL ANALYTICS ==========
+      getSellSummaryData: (period) => {
+        const transactions = get().getSellTransactions(period);
+        if (transactions.length === 0) return null;
+
+        const kpis = {
+          totalRevenue: 0,
+          totalTransactions: transactions.length,
+          avgTransactionValue: 0,
+          topItem: null as { name: string; quantity: number; revenue: number } | null,
+          topCategory: null as { name: string; revenue: number } | null,
+        };
+
+        const itemStats = new Map<string, { quantity: number; revenue: number; category: string }>();
+        const categoryRevenue = new Map<string, number>();
+
+        transactions.forEach(trans => {
+          kpis.totalRevenue += trans.totalAmount;
+          trans.items.forEach(item => {
+            const posItem = get().posItems.find(p => p.id === item.posItemId);
+            if (posItem) {
+              const existing = itemStats.get(item.posItemId) || { quantity: 0, revenue: 0, category: posItem.category };
+              existing.quantity += item.quantity;
+              existing.revenue += item.totalPrice;
+              itemStats.set(item.posItemId, existing);
+
+              categoryRevenue.set(posItem.category, (categoryRevenue.get(posItem.category) || 0) + item.totalPrice);
+            }
+          });
+        });
+
+        kpis.avgTransactionValue = kpis.totalRevenue / kpis.totalTransactions;
+
+        // Top item
+        let topItemId: string | null = null;
+        let topItemStats: { quantity: number; revenue: number; category: string } | null = null;
+        itemStats.forEach((stats: { quantity: number; revenue: number; category: string }, itemId: string) => {
+          if (!topItemStats || stats.revenue > topItemStats.revenue) {
+            topItemId = itemId;
+            topItemStats = stats;
+          }
+        });
+        if (topItemId && topItemStats !== null) {
+          const posItem = get().posItems.find(p => p.id === topItemId);
+          const stats: { quantity: number; revenue: number; category: string } = topItemStats;
+          kpis.topItem = {
+            name: posItem?.name || 'Unknown',
+            quantity: stats.quantity,
+            revenue: stats.revenue,
+          };
+        }
+
+        // Top category
+        let topCatName: string | null = null;
+        let topCatRevenue = 0;
+        categoryRevenue.forEach((revenue, category) => {
+          if (revenue > topCatRevenue) {
+            topCatName = category;
+            topCatRevenue = revenue;
+          }
+        });
+        if (topCatName) {
+          kpis.topCategory = { name: topCatName, revenue: topCatRevenue };
+        }
+
+        // Chart data
+        const revenueOverTime: { labels: string[]; data: number[] } = { labels: [], data: [] };
+        const timeMap = new Map<string, number>();
+
+        const startDate = transactions[0] ? new Date(transactions[0].date) : new Date();
+        const endDate = transactions[transactions.length - 1] ? new Date(transactions[transactions.length - 1].date) : new Date();
+
+        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+          const key = toJalaliDateString(d.toISOString());
+          timeMap.set(key, 0);
+        }
+
+        transactions.forEach(trans => {
+          const key = toJalaliDateString(trans.date);
+          timeMap.set(key, (timeMap.get(key) || 0) + trans.totalAmount);
+        });
+
+        revenueOverTime.labels = Array.from(timeMap.keys());
+        revenueOverTime.data = Array.from(timeMap.values());
+
+        const revenueByCategory: { labels: string[]; data: number[] } = { labels: [], data: [] };
+        const sortedCats = Array.from(categoryRevenue.entries()).sort((a, b) => b[1] - a[1]);
+        revenueByCategory.labels = sortedCats.map(c => c[0]);
+        revenueByCategory.data = sortedCats.map(c => c[1]);
+
+        const itemPopularity: { labels: string[]; data: number[] } = { labels: [], data: [] };
+        const sortedItems = Array.from(itemStats.entries()).sort((a, b) => b[1].quantity - a[1].quantity).slice(0, 10);
+        itemPopularity.labels = sortedItems.map(([itemId]) => {
+          const pos = get().posItems.find(p => p.id === itemId);
+          return pos?.name || 'Unknown';
+        });
+        itemPopularity.data = sortedItems.map(item => item[1].quantity);
+
+        return {
+          kpis,
+          charts: { revenueOverTime, revenueByCategory, itemPopularity },
+          period: { startDate, endDate }
+        };
+      },
+
+      getFinancialOverview: (period) => {
+        const buySummary = get().getSummaryData(period);
+        const sellSummary = get().getSellSummaryData(period);
+
+        if (!buySummary || !sellSummary) return null;
+
+        const buyData = buySummary.kpis;
+        const sellData = sellSummary.kpis;
+
+        // Calculate COGS (Cost of Goods Sold) = total cost of ingredients sold via recipes
+        let totalCOGS = 0;
+        get().getSellTransactions(period).forEach(trans => {
+          trans.items.forEach(item => {
+            if (item.costOfGoods) {
+              totalCOGS += item.costOfGoods;
+            }
+          });
+        });
+
+        const grossProfit = sellData.totalRevenue - totalCOGS;
+        const grossMargin = sellData.totalRevenue > 0 ? (grossProfit / sellData.totalRevenue) * 100 : 0;
+
+        return {
+          buy: {
+            totalSpend: buyData.totalSpend,
+            itemCount: buyData.totalItems,
+            avgDailySpend: buyData.avgDailySpend,
+          },
+          sell: {
+            totalRevenue: sellData.totalRevenue,
+            transactionCount: sellData.totalTransactions,
+            avgTransactionValue: sellData.avgTransactionValue,
+          },
+          recipes: {
+            totalCostOfGoods: totalCOGS,
+          },
+          profitAnalysis: {
+            grossProfit,
+            grossMargin,
+            netProfit: grossProfit, // Simplified; can add other expenses later
+          },
+          period: {
+            startDate: new Date(Math.min(buySummary.period.startDate.getTime(), sellSummary.period.startDate.getTime())),
+            endDate: new Date(Math.max(buySummary.period.endDate.getTime(), sellSummary.period.endDate.getTime())),
+          }
+        };
       },
 }));
