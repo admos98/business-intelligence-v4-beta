@@ -43,8 +43,11 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onLogout, onViewSellAnaly
   const posCategories = useMemo(() => {
     const cats = new Set<string>();
     posItems.forEach(item => cats.add(item.category));
+    // Add custom categories from the store
+    store.customCategories.forEach(cat => cats.add(cat));
     return Array.from(cats).sort();
-  }, [posItems]);
+  }, [posItems, store.customCategories]); // Add store.customCategories to dependencies
+
 
   // Set initial category
   React.useEffect(() => {
@@ -357,7 +360,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onLogout, onViewSellAnaly
               {currentCategoryItems.length === 0 ? (
                 <p className="text-center text-secondary py-4">هیچ کالایی در این دسته وجود ندارد</p>
               ) : (
-                <div className={`grid ${rushMode ? 'grid-cols-4' : 'grid-cols-3 sm:grid-cols-2'} gap-3`}> 
+                <div className={`grid ${rushMode ? 'grid-cols-4' : 'grid-cols-3 sm:grid-cols-2'} gap-3`}>
                   {currentCategoryItems.map(item => (
                     <POSItemCard
                       key={item.id}
