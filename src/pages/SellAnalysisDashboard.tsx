@@ -16,7 +16,7 @@ type SummaryPeriod = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
 const SellAnalysisDashboard: React.FC<SellAnalysisDashboardProps> = ({ onLogout }) => {
   const store = useShoppingStore();
   const { getSellSummaryData } = store;
-  
+
   const [period, setPeriod] = useState<SummaryPeriod>('mtd');
 
   const summaryData: SellSummaryData | null = useMemo(() => {

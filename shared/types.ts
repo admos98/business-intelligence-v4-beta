@@ -205,6 +205,7 @@ export interface POSItem {
   isRecipe?: boolean; // If true, this item is sold via recipe, not raw item
   recipeId?: string; // Link to recipe if isRecipe=true
   customizations?: POSCustomization[]; // E.g., syrup options, size modifiers
+  variants?: POSVariant[]; // Preset variants for fast POS entry
 }
 
 export interface POSCustomization {
@@ -213,6 +214,13 @@ export interface POSCustomization {
   type: 'select' | 'number' | 'text';
   options?: string[]; // For select type: ["Vanilla", "Chocolate"]
   priceModifier?: number; // Additional cost for this customization
+}
+
+export interface POSVariant {
+  id: string;
+  name: string; // e.g., "Single", "Double", "50ml Milk"
+  priceModifier: number; // delta to base price (can be negative)
+  presetCustomizations?: Record<string, string | number>; // e.g., { "Size": "Medium", "Syrup": "Vanilla" }
 }
 
 export interface SellTransaction {

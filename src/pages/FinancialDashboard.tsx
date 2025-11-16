@@ -17,7 +17,7 @@ const TrendDownIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h
 const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onLogout }) => {
   const store = useShoppingStore();
   const { getFinancialOverview } = store;
-  
+
   const [period, setPeriod] = useState<SummaryPeriod>('mtd');
 
   const financialData = useMemo(() => {

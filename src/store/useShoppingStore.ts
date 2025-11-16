@@ -22,6 +22,9 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   recipes: Recipe[];
   stockEntries: Record<string, StockEntry>; // itemName-unit key -> StockEntry
 
+  // Category actions
+  addCategory: (name: string) => void;
+
   hydrateFromCloud: () => Promise<void>;
 
   // List Actions
@@ -375,6 +378,16 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 [category]: vendorId
             }
         }));
+        debouncedSaveData(get());
+      },
+
+      addCategory: (name: string) => {
+        const trimmed = name?.trim();
+        if (!trimmed) return;
+        set(state => {
+          if (state.customCategories.includes(trimmed)) return {} as Partial<FullShoppingState>;
+          return { customCategories: [...state.customCategories, trimmed] } as Partial<FullShoppingState>;
+        });
         debouncedSaveData(get());
       },
 

@@ -26,7 +26,7 @@ interface RecipeFormData {
 const RecipeDashboard: React.FC<RecipeDashboardProps> = ({ onLogout }) => {
   const store = useShoppingStore();
   const { recipes, addRecipe, updateRecipe, deleteRecipe, getKnownItemNames, allCategories } = store;
-  
+
   const [showNewRecipeForm, setShowNewRecipeForm] = useState(false);
   const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null);
   const [formData, setFormData] = useState<RecipeFormData>({
@@ -126,7 +126,7 @@ const RecipeDashboard: React.FC<RecipeDashboardProps> = ({ onLogout }) => {
       addToast('دسترسی به چاپ رد شد', 'error');
       return;
     }
-    
+
     const recipesHtml = recipes.map(recipe => `
       <div style="page-break-inside: avoid; margin-bottom: 2rem; padding: 1rem; border: 1px solid #ccc; border-radius: 8px;">
         <h2 style="margin: 0; color: #333;">${recipe.name}</h2>
