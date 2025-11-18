@@ -13,6 +13,7 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useDebounce } from '../hooks/useDebounce';
+import { usePageActions } from '../contexts/PageActionsContext';
 
 interface DashboardProps {
   onSelectList: (listId: string) => void;
@@ -29,7 +30,7 @@ const SearchIcon = ({className}: {className?: string}) => <svg xmlns="http://www
 const ChevronDownIcon = ({ className }: { className?: string }) => <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>;
 
 
-const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onViewVendors, onViewItems, onViewSummary, onLogout }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onViewVendors, onViewItems, onViewSummary }) => {
   const store = useShoppingStore();
   const { lists, createList, deleteList, importData, exportData, getSmartSuggestions, getPendingPayments, vendors, getExpenseForecast, addItemFromSuggestion, isItemInTodaysPendingList } = store;
   const [isNewListModalOpen, setIsNewListModalOpen] = useState(false);
@@ -175,40 +176,35 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
     setExpandedMonths(prev => ({ ...prev, [monthKey]: !prev[monthKey] }));
   };
 
+  const { setActions } = usePageActions();
+
+  // Register page actions with Navbar
+  useEffect(() => {
+    setActions(
+      <>
+        <Button variant="secondary" size="sm" onClick={onViewSummary} fullWidth>
+          {t.executiveSummary}
+        </Button>
+        <Button variant="primary" size="sm" onClick={() => setIsReportsModalOpen(true)} fullWidth>
+          {t.generateReport}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onViewAnalysis} fullWidth>
+          {t.analysisDashboard}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onViewVendors} fullWidth>
+          {t.manageVendors}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onViewItems} fullWidth>
+          {t.manageItems}
+        </Button>
+      </>
+    );
+    return () => setActions(null);
+  }, [setActions, onViewSummary, onViewAnalysis, onViewVendors, onViewItems, setIsReportsModalOpen]);
+
   return (
     <>
-      <Header title={t.appTitle} onLogout={onLogout} hideMenu={true}>
-         <button
-            onClick={onViewSummary}
-            className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle"
-          >
-            {t.executiveSummary}
-          </button>
-         <button
-            onClick={() => setIsReportsModalOpen(true)}
-            className="px-3 py-1.5 text-sm bg-surface text-accent font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle"
-          >
-            {t.generateReport}
-          </button>
-         <button
-            onClick={onViewAnalysis}
-            className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle"
-          >
-            {t.analysisDashboard}
-          </button>
-          <button
-            onClick={onViewVendors}
-            className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle"
-          >
-            {t.manageVendors}
-          </button>
-          <button
-            onClick={onViewItems}
-            className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle"
-          >
-            {t.manageItems}
-          </button>
-      </Header>
+      <Header title={t.appTitle} hideMenu={true} />
       <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <Card title={t.todaysBriefing} className="lg:col-span-3">

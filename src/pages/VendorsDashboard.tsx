@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { t } from '../../shared/translations';
 import { useShoppingStore } from '../store/useShoppingStore';
 import Header from '../components/common/Header';
@@ -7,16 +7,17 @@ import VendorModal from '../components/modals/VendorModal';
 import ConfirmModal from '../components/modals/ConfirmModal';
 import { useToast } from '../components/common/Toast';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
+import Button from '../components/common/Button';
+import { usePageActions } from '../contexts/PageActionsContext';
 
 const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L14.732 3.732z" /></svg>;
 const DeleteIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
 
 interface VendorsDashboardProps {
   onBack: () => void;
-  onLogout: () => void;
 }
 
-const VendorsDashboard: React.FC<VendorsDashboardProps> = ({ onBack, onLogout }) => {
+const VendorsDashboard: React.FC<VendorsDashboardProps> = ({ onBack }) => {
   const { vendors, lists, deleteVendor } = useShoppingStore();
   const [modalState, setModalState] = useState<{ open: boolean; vendor?: Vendor }>({ open: false });
   const { addToast } = useToast();
@@ -90,30 +91,26 @@ const VendorsDashboard: React.FC<VendorsDashboardProps> = ({ onBack, onLogout })
     addToast(t.exportJsonSuccess, 'success');
   };
 
+  const { setActions } = usePageActions();
+
+  // Register page actions with Navbar
+  useEffect(() => {
+    setActions(
+      <>
+        <Button variant="ghost" size="sm" onClick={handleExportCsv} disabled={vendors.length === 0} fullWidth>
+          {t.exportCsv || 'صادر CSV'}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={handleExportJson} disabled={vendors.length === 0} fullWidth>
+          {t.exportJson}
+        </Button>
+      </>
+    );
+    return () => setActions(null);
+  }, [setActions, handleExportCsv, handleExportJson, vendors.length]);
+
   return (
     <>
-      <Header title={t.vendorsDashboardTitle} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout} hideMenu={true}>
-        <button
-          onClick={handleExportCsv}
-          disabled={vendors.length === 0}
-          className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle disabled:opacity-50 disabled:cursor-not-allowed mr-2"
-        >
-          {t.exportCsv || 'صادر کردن CSV'}
-        </button>
-        <button
-          onClick={handleExportJson}
-          disabled={vendors.length === 0}
-          className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle disabled:opacity-50 disabled:cursor-not-allowed mr-2"
-        >
-          {t.exportJson}
-        </button>
-        <button
-          onClick={() => setModalState({ open: true })}
-          className="px-4 py-2 bg-accent text-accent-text font-medium rounded-lg hover:opacity-90 transition-opacity"
-        >
-          {t.addNewVendor}
-        </button>
-      </Header>
+      <Header title={t.vendorsDashboardTitle} onBack={onBack} backText={t.backToDashboard} hideMenu={true} />
       <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
         {vendors.length === 0 ? (
           <div className="text-center py-16 px-6 bg-surface rounded-xl border border-border shadow-card">

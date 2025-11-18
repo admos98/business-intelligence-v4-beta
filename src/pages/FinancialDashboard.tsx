@@ -1,20 +1,20 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Header from '../components/common/Header';
 import { useShoppingStore } from '../store/useShoppingStore';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import Card from '../components/common/Card';
 import SkeletonLoader from '../components/common/SkeletonLoader';
+import Button from '../components/common/Button';
+import { usePageActions } from '../contexts/PageActionsContext';
 
-interface FinancialDashboardProps {
-  onLogout: () => void;
-}
+interface FinancialDashboardProps {}
 
 type SummaryPeriod = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
 
 const TrendUpIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8L5.586 19.414M7 13v8m0 0H3m4 0v-4" /></svg>;
 const TrendDownIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 17H3m0 0v-8m0 8l14.858-14.858M17 11v8m0 0h4m-4 0v-4" /></svg>;
 
-const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onLogout }) => {
+const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
   const store = useShoppingStore();
   const { getFinancialOverview } = store;
 
@@ -67,16 +67,24 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onLogout }) => 
     URL.revokeObjectURL(url);
   };
 
+  // Register page actions with Navbar
+  useEffect(() => {
+    setActions(
+      <>
+        <Button variant="ghost" size="sm" onClick={handleExportFinancialCsv} fullWidth>
+          صادر CSV
+        </Button>
+        <Button variant="ghost" size="sm" onClick={handleExportFinancialJson} fullWidth>
+          صادر JSON
+        </Button>
+      </>
+    );
+    return () => setActions(null);
+  }, [setActions, handleExportFinancialCsv, handleExportFinancialJson]);
+
   return (
     <>
-      <Header title="تقرير مالی و حسابداری" onLogout={onLogout} hideMenu={true}>
-        <button onClick={handleExportFinancialCsv} className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border">
-          صادر کردن CSV
-        </button>
-        <button onClick={handleExportFinancialJson} className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border">
-          صادر کردن JSON
-        </button>
-      </Header>
+      <Header title="تقرير مالی و حسابداری" hideMenu={true} />
 
       <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-8">
         {/* PERIOD SELECTOR */}

@@ -18,7 +18,6 @@ type Period = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
 
 interface SummaryDashboardProps {
   onBack: () => void;
-  onLogout: () => void;
 }
 
 const LoadingOverlay = () => (
@@ -31,7 +30,7 @@ const LoadingOverlay = () => (
 );
 
 
-const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout,}) => {
+const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack }) => {
   const [period, setPeriod] = useState<Period>('30d');
   const getSummaryData = useShoppingStore(state => state.getSummaryData);
   const { addToast } = useToast();
@@ -344,17 +343,23 @@ useEffect(() => {
     );
   };
 
+  const { setActions } = usePageActions();
+
+  // Register page actions with Navbar
+  useEffect(() => {
+    setActions(
+      <>
+        <Button variant="ghost" size="sm" onClick={handleExportJson} disabled={!summaryData} fullWidth>
+          {t.exportJson}
+        </Button>
+      </>
+    );
+    return () => setActions(null);
+  }, [setActions, handleExportJson, summaryData]);
+
   return (
     <>
-      <Header title={t.executiveSummary} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout} hideMenu={true}>
-        <button
-          onClick={handleExportJson}
-          disabled={!summaryData}
-          className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {t.exportJson}
-        </button>
-      </Header>
+      <Header title={t.executiveSummary} onBack={onBack} backText={t.backToDashboard} hideMenu={true} />
       <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
         <div className="flex flex-wrap gap-2 justify-center mb-6">
           <PeriodButton value="7d" label={t.last7Days} />

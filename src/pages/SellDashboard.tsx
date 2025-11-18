@@ -1,15 +1,15 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { POSItem, SellTransaction, SellTransactionItem, PaymentMethod, Unit } from '../../shared/types';
 import Header from '../components/common/Header';
 import { useShoppingStore } from '../store/useShoppingStore';
-
 import { useToast } from '../components/common/Toast';
 import { toJalaliDateString } from '../../shared/jalali';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import Card from '../components/common/Card';
+import Button from '../components/common/Button';
+import { usePageActions } from '../contexts/PageActionsContext';
 
 interface SellDashboardProps {
-  onLogout: () => void;
   onViewSellAnalysis: () => void;
 }
 
@@ -18,15 +18,15 @@ const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-
 const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
 const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>;
 
-const SellDashboard: React.FC<SellDashboardProps> = ({ onLogout, onViewSellAnalysis }) => {
+const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => {
   const store = useShoppingStore();
   const { posItems, getPOSItemsByCategory, getFrequentPOSItems, addSellTransaction, addPOSItem, addCategory } = store;
 
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [cart, setCart] = useState<Map<string, { posItemId: string; name: string; quantity: number; unitPrice: number; customizations: Record<string, string | number> }>>(new Map());
   const [itemSearch, setItemSearch] = useState<string>('');
-  const [categorySearch, setCategorySearch] = useState<string>('');
   const [rushMode, setRushMode] = useState<boolean>(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Customization modal state
   const [modalItem, setModalItem] = useState<POSItem | null>(null);
@@ -38,6 +38,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onLogout, onViewSellAnaly
   const [showNewItemForm, setShowNewItemForm] = useState(false);
   const [newItemForm, setNewItemForm] = useState({ name: '', category: '', sellPrice: 0 });
   const { addToast } = useToast();
+  const { setActions } = usePageActions();
 
   // Get POS categories
   const posCategories = useMemo(() => {
@@ -62,7 +63,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onLogout, onViewSellAnaly
     const q = itemSearch.trim().toLowerCase();
     return items.filter(i => i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q));
   }, [selectedCategory, getPOSItemsByCategory, posItems, itemSearch]);
-  const frequentItems = getFrequentPOSItems(6);
+  const frequentItems = getFrequentPOSItems(12);
 
   const cartArray = Array.from(cart.values());
   const cartTotal = cartArray.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
@@ -123,27 +124,44 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onLogout, onViewSellAnaly
     closeModal();
   };
 
-  // Keyboard shortcuts: 1..9 map to frequent items
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const key = e.key;
-      if (/^[1-9]$/.test(key)) {
-        const idx = parseInt(key, 10) - 1;
+      // Focus search on Ctrl+F or /
+      if ((e.ctrlKey && e.key === 'f') || e.key === '/') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
+      // Number keys 1-9 for frequent items
+      if (/^[1-9]$/.test(e.key) && !e.ctrlKey && !e.altKey && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        const idx = parseInt(e.key, 10) - 1;
         const item = frequentItems[idx];
         if (item) {
           if (rushMode) {
-            // Rush mode: instant add
             handleAddToCart(item);
           } else {
-            // open modal for edits
             openCustomizationModal(item);
           }
         }
       }
+
+      // Enter to complete sale when cart has items
+      if (e.key === 'Enter' && cartArray.length > 0 && !modalItem && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        handleCompleteSale();
+      }
+
+      // Escape to close modals
+      if (e.key === 'Escape') {
+        if (modalItem) closeModal();
+        if (showNewItemForm) setShowNewItemForm(false);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [frequentItems, rushMode]);
+  }, [frequentItems, rushMode, cartArray.length, modalItem, showNewItemForm]);
 
   const handleUpdateCartQuantity = (posItemId: string, quantity: number) => {
     setCart(prev => {
@@ -316,65 +334,155 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onLogout, onViewSellAnaly
     addToast('CSV فروش‌ها صادر شد', 'success');
   };
 
+  // Register page actions with Navbar
+  useEffect(() => {
+    setActions(
+      <>
+        <Button variant="ghost" size="sm" onClick={handleExportTransactionsCsv} fullWidth>
+          صادر CSV
+        </Button>
+        <Button variant="ghost" size="sm" onClick={handleExportTransactionsJson} fullWidth>
+          صادر JSON
+        </Button>
+        <Button variant="primary" size="sm" onClick={handlePrintCart} fullWidth>
+          چاپ سبد
+        </Button>
+        <Button variant="secondary" size="sm" onClick={onViewSellAnalysis} fullWidth>
+          تحلیل فروش
+        </Button>
+      </>
+    );
+    return () => setActions(null);
+  }, [setActions, handleExportTransactionsCsv, handleExportTransactionsJson, handlePrintCart, onViewSellAnalysis]);
+
   return (
     <>
-      <Header title="فروش و سفارش (POS)" onLogout={onLogout}>
-        <button onClick={handleExportTransactionsCsv} className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border">
-          صادر کردن CSV
-        </button>
-        <button onClick={handleExportTransactionsJson} className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border">
-          صادر کردن JSON
-        </button>
-        <button onClick={handlePrintCart} className="px-3 py-1.5 text-sm bg-primary text-background font-medium rounded-lg hover:opacity-90 transition-opacity">
-          چاپ سبد
-        </button>
-        <button
-          onClick={onViewSellAnalysis}
-          className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle"
-        >
-          تحلیل فروش
-        </button>
-      </Header>
+      <Header title="فروش و سفارش (POS)" hideMenu={true} />
 
-      <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-screen">
-        {/* LEFT: ITEMS (Larger) */}
-        <div className="lg:col-span-3 space-y-4">
-          <div className="flex items-center justify-between gap-3">
+      <main className="p-4 sm:p-6 md:p-8 max-w-[1800px] mx-auto">
+        {/* CATEGORIES BAR - Top of screen for quick access */}
+        <div className="mb-4 flex flex-wrap gap-2 items-center animate-fade-in">
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="جستجوی کالا... (Ctrl+F یا /)"
+            value={itemSearch}
+            onChange={(e) => setItemSearch(e.target.value)}
+            className="flex-1 min-w-[200px] px-4 py-2.5 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-lg"
+          />
+          <div className="flex flex-wrap gap-2">
+            {posCategories.map(cat => (
+              <Button
+                key={cat}
+                variant={selectedCategory === cat ? "primary" : "secondary"}
+                size="sm"
+                onClick={() => setSelectedCategory(cat)}
+                className="animate-fade-in"
+              >
+                {cat}
+              </Button>
+            ))}
             <input
-              type="text"
-              placeholder="جستجوی کالا..."
-              value={itemSearch}
-              onChange={(e) => setItemSearch(e.target.value)}
-              className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+              placeholder="دسته جدید..."
+              className="px-3 py-2 bg-surface border border-border rounded-lg text-sm"
+              id="new-pos-category"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const el = e.target as HTMLInputElement;
+                  const val = el.value?.trim();
+                  if (val) {
+                    addCategory(val);
+                    el.value = '';
+                  }
+                }
+              }}
             />
-            <button
-              onClick={() => setRushMode(prev => !prev)}
-              className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${rushMode ? 'bg-accent text-accent-text border-accent' : 'bg-surface text-primary border-border hover:bg-border'}`}
-              title="Rush Mode (یک‌لمسی)"
-            >
-              {rushMode ? 'Rush: روشن' : 'Rush: خاموش'}
-            </button>
           </div>
-          <Card title={`اقلام (${currentCategoryItems.length})`}>
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {currentCategoryItems.length === 0 ? (
-                <p className="text-center text-secondary py-4">هیچ کالایی در این دسته وجود ندارد</p>
-              ) : (
-                <div className={`grid ${rushMode ? 'grid-cols-4' : 'grid-cols-3 sm:grid-cols-2'} gap-3`}>
-                  {currentCategoryItems.map(item => (
-                    <POSItemCard
+          <Button
+            variant={rushMode ? "primary" : "secondary"}
+            size="sm"
+            onClick={() => setRushMode(prev => !prev)}
+          >
+            {rushMode ? 'Rush: روشن' : 'Rush: خاموش'}
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* LEFT: ITEMS (Larger - 3 columns) */}
+          <div className="lg:col-span-3 space-y-4">
+            {/* Frequent Items - Quick Access */}
+            {frequentItems.length > 0 && !itemSearch && (
+              <Card title="دسترسی سریع" className="bg-accent/5 animate-fade-in">
+                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-2">
+                  {frequentItems.map((item, idx) => (
+                    <button
                       key={item.id}
-                      item={item}
-                      onAdd={() => handleAddToCart(item)}
-                      onAddVariant={(variantId: string) => handleAddToCart(item, { variantId })}
-                      inCart={Array.from(cart.keys()).some(k => k.startsWith(item.id))}
-                      rush={rushMode}
-                    />
+                      onClick={() => {
+                        if (item.variants && item.variants.length > 0) {
+                          openCustomizationModal(item);
+                        } else {
+                          handleAddToCart(item);
+                        }
+                      }}
+                      className="p-3 bg-surface border border-border rounded-lg hover:bg-accent/10 hover:border-accent hover-lift transition-all text-center group animate-fade-in"
+                      style={{ animationDelay: `${idx * 30}ms` }}
+                      title={`${item.name} (${idx + 1})`}
+                    >
+                      <div className="text-xs text-secondary mb-1">{idx + 1}</div>
+                      <div className="text-sm font-semibold text-primary truncate">{item.name}</div>
+                      <div className="text-xs text-accent mt-1"><CurrencyDisplay value={item.sellPrice} /></div>
+                    </button>
                   ))}
                 </div>
+              </Card>
+            )}
+
+            {/* Items Grid - Large buttons for speed */}
+            <Card title={`${selectedCategory || 'همه'} (${currentCategoryItems.length})`} className="animate-fade-in">
+              {currentCategoryItems.length === 0 ? (
+                <div className="text-center py-16">
+                  <p className="text-secondary text-lg mb-4">هیچ کالایی در این دسته وجود ندارد</p>
+                  <Button
+                    onClick={() => setShowNewItemForm(true)}
+                    variant="primary"
+                  >
+                    افزودن کالای جدید
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                  {currentCategoryItems.map((item, idx) => {
+                    const inCart = Array.from(cart.keys()).some(k => k.startsWith(item.id));
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          if (item.variants && item.variants.length > 0) {
+                            openCustomizationModal(item);
+                          } else {
+                            handleAddToCart(item);
+                          }
+                        }}
+                        className={`p-4 rounded-lg border-2 transition-all text-center hover-lift animate-fade-in ${
+                          inCart
+                            ? 'bg-accent/20 border-accent shadow-lg scale-105'
+                            : 'bg-surface border-border hover:border-accent hover:bg-accent/5'
+                        }`}
+                        style={{ animationDelay: `${idx * 20}ms` }}
+                      >
+                        <div className="font-bold text-base text-primary mb-1 truncate">{item.name}</div>
+                        <div className="text-sm text-accent font-semibold"><CurrencyDisplay value={item.sellPrice} /></div>
+                        {inCart && (
+                          <div className="text-xs text-accent mt-1">
+                            {cartArray.find(c => c.posItemId === item.id)?.quantity || 0}×
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
-            </div>
-          </Card>
+            </Card>
 
             {showNewItemForm && (
               <div className="mt-4 p-4 bg-background rounded-lg border border-border space-y-3">
@@ -439,171 +547,240 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onLogout, onViewSellAnaly
               </div>
             )}
 
-          {frequentItems.length > 0 && (
-            <Card title="اقلام پرفروش">
-              <div className="grid grid-cols-4 gap-2">
-                {frequentItems.map((item, idx) => (
-                  <button
-                    key={item.id}
-                    onClick={() => rushMode ? handleAddToCart(item) : openCustomizationModal(item)}
-                    className="p-3 bg-success/10 text-success text-sm font-medium rounded-lg hover:bg-success/20 transition-colors border border-success/30 text-center truncate"
-                  >
-                    <span className="font-bold mr-1">{idx < 9 ? idx + 1 : ''}</span>
-                    {item.name}
-                  </button>
-                ))}
-              </div>
-            </Card>
-          )}
-        </div>
-        {/* RIGHT: CATEGORIES (narrow) + CART & PAYMENT */}
-        <div className="lg:col-span-1 space-y-4 sticky top-4 h-fit">
-          <Card title="دسته‌بندی‌ها">
-            <div className="space-y-2">
-              <input
-                type="text"
-                placeholder="جستجوی دسته..."
-                value={categorySearch}
-                onChange={(e) => setCategorySearch(e.target.value)}
-                className="w-full px-3 py-2 bg-surface border border-border rounded-lg mb-2"
-              />
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {posCategories.filter(c => !categorySearch.trim() || c.toLowerCase().includes(categorySearch.trim().toLowerCase())).map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`w-full px-3 py-2 rounded-lg text-left font-medium transition-colors ${
-                      selectedCategory === cat
-                        ? 'bg-accent text-accent-text'
-                        : 'bg-surface border border-border text-primary hover:bg-border'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-2 flex gap-2">
-                <input placeholder="دسته جدید..." className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg" id="new-pos-category" />
-                <button onClick={() => {
-                    const el = document.getElementById('new-pos-category') as HTMLInputElement | null;
-                    if (!el) return;
-                    const val = el.value?.trim();
-                    if (!val) return;
-                    addCategory(val);
-                    el.value = '';
-                  }} className="px-3 py-2 bg-primary text-background rounded-lg">افزودن دسته</button>
-              </div>
-              <button
-                onClick={() => setShowNewItemForm(!showNewItemForm)}
-                className="w-full mt-2 px-4 py-2 rounded-lg text-left font-medium bg-success/10 text-success hover:bg-success/20 transition-colors border border-success/30"
-              >
-                + افزودن کالای جدید
-              </button>
-            </div>
-          </Card>
-
-          <Card title={`سبد خرید (${cartArray.length})`} className="bg-accent/5">
-            <div className="space-y-3 max-h-96 overflow-y-auto border-b border-border pb-3">
-              {cartArray.length === 0 ? (
-                <p className="text-center text-secondary py-6">سبد خرید خالی است</p>
-              ) : (
-                cartArray.map(item => (
-                  <div key={item.posItemId} className="bg-surface p-3 rounded-lg border border-border">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <p className="font-semibold text-primary text-sm">{item.name}</p>
-                        <CurrencyDisplay value={item.unitPrice} className="text-xs text-secondary" />
-                      </div>
-                      <button
-                        onClick={() => handleRemoveFromCart(item.posItemId)}
-                        className="text-danger hover:text-danger/80 transition-colors p-1"
-                      >
-                        <TrashIcon />
-                      </button>
+            {/* New/Edit Item Form */}
+            {showNewItemForm && (
+              <Card title="افزودن کالای جدید" className="animate-fade-in">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-primary block mb-1">نام کالا</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: قهوه لاته"
+                        value={newItemForm.name}
+                        onChange={(e) => setNewItemForm({ ...newItemForm, name: e.target.value })}
+                        className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                      />
                     </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 bg-background rounded-lg p-1">
-                        <button
-                          onClick={() => handleUpdateCartQuantity(item.posItemId, item.quantity - 1)}
-                          className="p-1 hover:bg-border rounded transition-colors"
-                        >
-                          <MinusIcon />
-                        </button>
-                        <span className="w-8 text-center font-medium">{item.quantity}</span>
-                        <button
-                          onClick={() => handleUpdateCartQuantity(item.posItemId, item.quantity + 1)}
-                          className="p-1 hover:bg-border rounded transition-colors"
-                        >
-                          <PlusIcon />
-                        </button>
-                      </div>
-                      <CurrencyDisplay value={item.quantity * item.unitPrice} className="font-semibold text-primary text-sm" />
+                    <div>
+                      <label className="text-sm font-medium text-primary block mb-1">دسته‌بندی</label>
+                      <select
+                        value={newItemForm.category}
+                        onChange={(e) => setNewItemForm({ ...newItemForm, category: e.target.value })}
+                        className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                      >
+                        <option value="">انتخاب دسته</option>
+                        {posCategories.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-primary block mb-1">قیمت پایه (ریال)</label>
+                      <input
+                        type="number"
+                        placeholder="قیمت پایه"
+                        value={newItemForm.sellPrice || ''}
+                        onChange={(e) => setNewItemForm({ ...newItemForm, sellPrice: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                      />
                     </div>
                   </div>
-                ))
-              )}
-            </div>
 
-            {/* TOTALS */}
-            {cartArray.length > 0 && (
-              <div className="space-y-2 mt-3 pt-3 border-t border-border">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-secondary">جمع:</span>
-                  <CurrencyDisplay value={cartTotal} className="font-semibold text-primary" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    placeholder="تخفیف (ریال)"
-                    value={discountAmount || ''}
-                    onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                    className="flex-1 px-2 py-1 bg-surface border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                  />
-                  <span className="text-xs text-secondary">تخفیف:</span>
-                </div>
-                <div className="flex justify-between items-center text-lg font-bold bg-accent/10 p-2 rounded-lg">
-                  <span>نهایی:</span>
-                  <CurrencyDisplay value={finalTotal} className="text-accent" />
-                </div>
-              </div>
-            )}
-          </Card>
+                  {/* VARIANTS EDITOR */}
+                  <div className="mt-3">
+                    <label className="text-sm font-medium text-primary block mb-2">ورژن‌های آماده (اختیاری)</label>
+                    <div className="space-y-2">
+                      {newItemVariants.map((v, idx) => (
+                        <div key={v.id} className="flex gap-2">
+                          <input
+                            value={v.name}
+                            onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))}
+                            className="flex-1 px-2 py-1 bg-surface border border-border rounded"
+                            placeholder="نام ورژن"
+                          />
+                          <input
+                            type="number"
+                            value={String(v.priceModifier)}
+                            onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? { ...p, priceModifier: parseFloat(e.target.value) || 0 } : p))}
+                            className="w-28 px-2 py-1 bg-surface border border-border rounded"
+                            placeholder="+500"
+                          />
+                          <Button variant="danger" size="sm" onClick={() => setNewItemVariants(prev => prev.filter((_, i) => i !== idx))}>
+                            حذف
+                          </Button>
+                        </div>
+                      ))}
+                      <div className="flex gap-2 mt-2">
+                        <input id="new-variant-name" placeholder="نام ورژن (مثال: دوبل)" className="flex-1 px-2 py-1 bg-surface border border-border rounded" />
+                        <input id="new-variant-price" type="number" placeholder="+500" className="w-28 px-2 py-1 bg-surface border border-border rounded" />
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => {
+                            const nEl = document.getElementById('new-variant-name') as HTMLInputElement | null;
+                            const pEl = document.getElementById('new-variant-price') as HTMLInputElement | null;
+                            if (!nEl) return;
+                            const name = nEl.value.trim();
+                            const price = pEl ? parseFloat(pEl.value) || 0 : 0;
+                            if (!name) return;
+                            setNewItemVariants(prev => [...prev, { id: `var-${Date.now()}-${Math.random()}`, name, priceModifier: price }]);
+                            nEl.value = '';
+                            if (pEl) pEl.value = '';
+                          }}
+                        >
+                          افزودن ورژن
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
 
-          {/* PAYMENT */}
-          <Card title="پرداخت">
-            <div className="space-y-3">
-              <div>
-                <label className="text-sm font-medium text-primary block mb-2">روش پرداخت</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer].map(method => (
-                    <button
-                      key={method}
-                      onClick={() => setPaymentMethod(method)}
-                      className={`px-2 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                        paymentMethod === method
-                          ? 'bg-accent text-accent-text border-accent'
-                          : 'bg-surface text-primary border-border hover:bg-border'
-                      }`}
+                  <div className="flex gap-2 pt-2 border-t border-border">
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setShowNewItemForm(false);
+                        setNewItemForm({ name: '', category: '', sellPrice: 0 });
+                        setNewItemVariants([]);
+                      }}
+                      fullWidth
                     >
-                      {method}
-                    </button>
-                  ))}
+                      انصراف
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={handleAddNewPOSItem}
+                      fullWidth
+                    >
+                      افزودن کالا
+                    </Button>
+                  </div>
                 </div>
+              </Card>
+            )}
+          </div>
+
+          {/* RIGHT: CART & PAYMENT (1 column) */}
+          <div className="lg:col-span-1 space-y-4 sticky top-4 h-fit">
+            <Card title={`سبد خرید (${cartArray.length})`} className="bg-accent/5 animate-fade-in">
+              <div className="space-y-2 max-h-[400px] overflow-y-auto border-b border-border pb-3">
+                {cartArray.length === 0 ? (
+                  <p className="text-center text-secondary py-8">سبد خرید خالی است</p>
+                ) : (
+                  cartArray.map((item, idx) => {
+                    const cartKey = Array.from(cart.keys())[idx];
+                    return (
+                      <div
+                        key={cartKey}
+                        className="bg-surface p-3 rounded-lg border border-border hover-lift animate-fade-in transition-all"
+                        style={{ animationDelay: `${idx * 30}ms` }}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            <p className="font-semibold text-primary text-sm">{item.name}</p>
+                            <CurrencyDisplay value={item.unitPrice} className="text-xs text-secondary" />
+                          </div>
+                          <button
+                            onClick={() => handleRemoveFromCart(item.posItemId)}
+                            className="text-danger hover:text-danger/80 transition-colors p-1 hover:bg-danger/10 rounded"
+                            aria-label="حذف از سبد"
+                          >
+                            <TrashIcon />
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 bg-background rounded-lg p-1">
+                            <button
+                              onClick={() => handleUpdateCartQuantity(item.posItemId, item.quantity - 1)}
+                              className="p-1 hover:bg-border rounded transition-colors"
+                              aria-label="کاهش تعداد"
+                            >
+                              <MinusIcon />
+                            </button>
+                            <span className="w-10 text-center font-bold text-lg">{item.quantity}</span>
+                            <button
+                              onClick={() => handleUpdateCartQuantity(item.posItemId, item.quantity + 1)}
+                              className="p-1 hover:bg-border rounded transition-colors"
+                              aria-label="افزایش تعداد"
+                            >
+                              <PlusIcon />
+                            </button>
+                          </div>
+                          <CurrencyDisplay value={item.quantity * item.unitPrice} className="font-bold text-primary" />
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
-              <button
-                onClick={handleCompleteSale}
-                disabled={cartArray.length === 0}
-                className="w-full px-4 py-3 bg-success text-success-text font-bold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                <CheckIcon />
-                تایید و ثبت فروش
-              </button>
-            </div>
-          </Card>
+              {/* TOTALS */}
+              {cartArray.length > 0 && (
+                <div className="space-y-3 mt-3 pt-3 border-t border-border">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-secondary">جمع:</span>
+                    <CurrencyDisplay value={cartTotal} className="font-semibold text-primary" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-secondary block mb-1">تخفیف (ریال)</label>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={discountAmount || ''}
+                      onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                      className="w-full px-2 py-1.5 bg-surface border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                    />
+                  </div>
+                  <div className="flex justify-between items-center text-xl font-bold bg-accent/10 p-3 rounded-lg">
+                    <span>نهایی:</span>
+                    <CurrencyDisplay value={finalTotal} className="text-accent" />
+                  </div>
+                </div>
+              )}
+            </Card>
 
-          {/* RECENT TRANSACTIONS */}
-          <RecentTransactionsCard store={store} />
+            {/* PAYMENT */}
+            {cartArray.length > 0 && (
+              <Card title="پرداخت" className="animate-fade-in">
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-sm font-medium text-primary block mb-2">روش پرداخت</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer].map(method => (
+                        <button
+                          key={method}
+                          onClick={() => setPaymentMethod(method)}
+                          className={`px-3 py-3 text-sm font-medium rounded-lg border-2 transition-colors ${
+                            paymentMethod === method
+                              ? 'bg-accent text-accent-text border-accent'
+                              : 'bg-surface text-primary border-border hover:bg-border'
+                          }`}
+                        >
+                          {method}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="success"
+                    size="lg"
+                    onClick={handleCompleteSale}
+                    disabled={cartArray.length === 0}
+                    fullWidth
+                    icon={<CheckIcon />}
+                    className="animate-fade-in"
+                  >
+                    تایید و ثبت فروش
+                  </Button>
+                  <p className="text-xs text-secondary text-center">Enter برای ثبت سریع</p>
+                </div>
+              </Card>
+            )}
+
+            {/* RECENT TRANSACTIONS */}
+            <RecentTransactionsCard store={store} />
+          </div>
         </div>
       </main>
       {/* Customization Modal */}
@@ -652,37 +829,6 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onLogout, onViewSellAnaly
   );
 };
 
-const POSItemCard: React.FC<{ item: POSItem; onAdd: () => void; onAddVariant?: (variantId: string) => void; inCart: boolean; rush?: boolean }> = ({ item, onAdd, onAddVariant, inCart, rush }) => (
-  <div className={`w-full ${rush ? 'p-4' : 'p-3'} rounded-lg border transition-colors ${
-      inCart
-        ? 'bg-accent/10 border-accent'
-        : 'bg-surface border-border'
-    }`}>
-    <div className="flex justify-between items-start mb-1">
-      <div>
-        <p className={`${rush ? 'font-bold text-base' : 'font-semibold text-sm'} text-primary`}>{item.name}</p>
-        {!rush && <p className="text-xs text-secondary">{item.category}</p>}
-      </div>
-      <div className="text-right">
-        <CurrencyDisplay value={item.sellPrice} className="text-sm font-medium text-accent" />
-      </div>
-    </div>
-
-    <div className="mt-2 flex flex-wrap gap-2">
-      <button onClick={onAdd} className={`${rush ? 'w-full py-3 text-lg' : 'px-3 py-1 text-sm'} bg-accent/10 text-accent rounded hover:bg-accent/20`}>+ افزودن</button>
-      {item.variants && item.variants.length > 0 && onAddVariant && (
-        <div className="flex gap-2 flex-wrap">
-          {item.variants.map(v => (
-            <button key={v.id} onClick={() => onAddVariant(v.id)} className={`px-2 py-1 ${rush ? 'text-sm' : 'text-xs'} bg-surface text-primary rounded border border-border hover:bg-border`}>
-              {v.name} {v.priceModifier ? `(${v.priceModifier > 0 ? '+' : ''}${v.priceModifier})` : ''}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  </div>
-);
-
 const RecentTransactionsCard: React.FC<{ store: any }> = ({ store }) => {
   const { sellTransactions } = store as { sellTransactions: SellTransaction[] };
   const recentTransactions = sellTransactions.slice(-5).reverse();
@@ -694,7 +840,7 @@ const RecentTransactionsCard: React.FC<{ store: any }> = ({ store }) => {
       ) : (
         <div className="space-y-2 max-h-40 overflow-y-auto">
           {recentTransactions.map((trans: SellTransaction) => (
-            <div key={trans.id} className="p-2 bg-background rounded border border-border text-xs">
+            <div key={trans.id} className="p-2 bg-background rounded border border-border text-xs hover-lift transition-all animate-fade-in">
               <div className="flex justify-between items-start mb-1">
                 <span className="text-secondary">{toJalaliDateString(trans.date)}</span>
                 <CurrencyDisplay value={trans.totalAmount} className="font-semibold text-primary" />

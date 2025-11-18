@@ -179,10 +179,9 @@ const ItemTrendModal: React.FC<{ item: MasterItem, onClose: () => void }> = ({ i
 
 interface ItemsDashboardProps {
   onBack: () => void;
-  onLogout: () => void;
 }
 
-const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack, onLogout,}) => {
+const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack }) => {
   const { getAllKnownItems, getItemPriceHistory } = useShoppingStore();
   const [modalState, setModalState] = useState<{ open: boolean; item?: MasterItem }>({ open: false });
   const [analyzedItem, setAnalyzedItem] = useState<MasterItem | null>(null);
@@ -225,24 +224,26 @@ const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack, onLogout,}) => 
     addToast(t.exportJsonSuccess, 'success');
   };
 
+  const { setActions } = usePageActions();
+
+  // Register page actions with Navbar
+  useEffect(() => {
+    setActions(
+      <>
+        <Button variant="ghost" size="sm" onClick={handleExportCsv} disabled={allItems.length === 0} fullWidth>
+          {t.exportCsv || 'صادر CSV'}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={handleExportJson} disabled={allItems.length === 0} fullWidth>
+          {t.exportJson}
+        </Button>
+      </>
+    );
+    return () => setActions(null);
+  }, [setActions, handleExportCsv, handleExportJson, allItems.length]);
+
   return (
     <>
-      <Header title={t.itemsDashboardTitle} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout} hideMenu={true}>
-        <button
-          onClick={handleExportCsv}
-          disabled={allItems.length === 0}
-          className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle disabled:opacity-50 disabled:cursor-not-allowed mr-2"
-        >
-          {t.exportCsv || 'صادر کردن CSV'}
-        </button>
-        <button
-          onClick={handleExportJson}
-          disabled={allItems.length === 0}
-          className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle disabled:opacity-50 disabled:cursor-not-allowed mr-2"
-        >
-          {t.exportJson}
-        </button>
-      </Header>
+      <Header title={t.itemsDashboardTitle} onBack={onBack} backText={t.backToDashboard} hideMenu={true} />
       <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
         {allItems.length === 0 ? (
           <div className="text-center py-16 px-6 bg-surface rounded-xl border border-border shadow-card">

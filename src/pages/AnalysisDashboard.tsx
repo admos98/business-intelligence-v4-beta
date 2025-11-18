@@ -62,10 +62,9 @@ const GROUP_BY_LABELS: Record<GroupBy | 'none', string> = {
 
 interface InsightsHubProps {
     onBack: () => void;
-    onLogout: () => void;
 }
 
-const InsightsHub: React.FC<InsightsHubProps> = ({ onBack, onLogout}) => {
+const InsightsHub: React.FC<InsightsHubProps> = ({ onBack }) => {
     const [activeTab, setActiveTab] = useState<Tab>('inflation');
 
     const renderTabContent = () => {
@@ -79,7 +78,7 @@ const InsightsHub: React.FC<InsightsHubProps> = ({ onBack, onLogout}) => {
 
     return (
         <div className="flex flex-col h-screen">
-            <Header title={t.insightsHub || "Insights Hub"} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout} hideMenu={true} />
+            <Header title={t.insightsHub || "Insights Hub"} onBack={onBack} backText={t.backToDashboard} hideMenu={true} />
             <main className="flex-grow p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full">
                 <div className="mb-6 border-b border-border flex items-center justify-center">
                     <TabButton id="inflation" label={t.inflationTracker || "Inflation"} activeTab={activeTab} setActiveTab={setActiveTab} />

@@ -19,6 +19,7 @@ import { useTheme } from './hooks/useTheme';
 import { useShoppingStore } from './store/useShoppingStore';
 import { t } from '../shared/translations';
 import { logoSvg } from './assets/logo';
+import { PageActionsProvider, usePageActions } from './contexts/PageActionsContext';
 import './styles/animations.css';
 
 type View = 'dashboard' | 'list' | 'analysis' | 'vendors' | 'summary' | 'items' | 'sell' | 'recipes' | 'sellAnalysis' | 'financial';
@@ -51,9 +52,7 @@ const App: React.FC = () => {
     setView('dashboard'); // Reset to default view on logout
   };
 
-  const commonProps = {
-    onLogout: handleLogout,
-  };
+  const commonProps = {};
 
   const renderView = () => {
     if (isHydrating) {
@@ -122,16 +121,43 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <ToastProvider>
-        <div className="min-h-screen bg-background text-primary font-sans flex md:flex-row transition-all">
-          <Navbar currentView={view} onNavigate={handleNavigate} onLogout={handleLogout} />
-          <main className="flex-1 w-full md:w-auto animate-fade-in">
-            <Suspense fallback={<LoadingSpinner size="lg" className="min-h-screen" text="در حال بارگذاری..." />}>
-              {renderView()}
-            </Suspense>
-          </main>
-        </div>
+        <PageActionsProvider>
+          <div className="min-h-screen bg-background text-primary font-sans flex md:flex-row transition-all">
+            <AppContent
+              view={view}
+              onNavigate={handleNavigate}
+              onLogout={handleLogout}
+              renderView={renderView}
+            />
+          </div>
+        </PageActionsProvider>
       </ToastProvider>
     </ErrorBoundary>
+  );
+};
+
+const AppContent: React.FC<{
+  view: View;
+  onNavigate: (view: View) => void;
+  onLogout: () => void;
+  renderView: () => React.ReactNode;
+}> = ({ view, onNavigate, onLogout, renderView }) => {
+  const { actions } = usePageActions();
+
+  return (
+    <>
+      <Navbar
+        currentView={view}
+        onNavigate={onNavigate}
+        onLogout={onLogout}
+        pageActions={actions}
+      />
+      <main className={`flex-1 w-full animate-fade-in transition-all duration-300`}>
+        <Suspense fallback={<LoadingSpinner size="lg" className="min-h-screen" text="در حال بارگذاری..." />}>
+          {renderView()}
+        </Suspense>
+      </main>
+    </>
   );
 };
 

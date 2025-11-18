@@ -1,19 +1,18 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { SellSummaryData } from '../../shared/types';
 import Header from '../components/common/Header';
 import { useShoppingStore } from '../store/useShoppingStore';
-
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import Card from '../components/common/Card';
 import SkeletonLoader from '../components/common/SkeletonLoader';
+import Button from '../components/common/Button';
+import { usePageActions } from '../contexts/PageActionsContext';
 
-interface SellAnalysisDashboardProps {
-  onLogout: () => void;
-}
+interface SellAnalysisDashboardProps {}
 
 type SummaryPeriod = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
 
-const SellAnalysisDashboard: React.FC<SellAnalysisDashboardProps> = ({ onLogout }) => {
+const SellAnalysisDashboard: React.FC<SellAnalysisDashboardProps> = () => {
   const store = useShoppingStore();
   const { getSellSummaryData } = store;
 
@@ -24,6 +23,7 @@ const SellAnalysisDashboard: React.FC<SellAnalysisDashboardProps> = ({ onLogout 
   }, [period, getSellSummaryData]);
 
   const isLoading = false;
+  const { setActions } = usePageActions();
 
   const handleExportAnalysisJson = () => {
     if (!summaryData) {
@@ -62,16 +62,24 @@ const SellAnalysisDashboard: React.FC<SellAnalysisDashboardProps> = ({ onLogout 
     URL.revokeObjectURL(url);
   };
 
+  // Register page actions with Navbar
+  useEffect(() => {
+    setActions(
+      <>
+        <Button variant="ghost" size="sm" onClick={handleExportAnalysisCsv} fullWidth>
+          صادر CSV
+        </Button>
+        <Button variant="ghost" size="sm" onClick={handleExportAnalysisJson} fullWidth>
+          صادر JSON
+        </Button>
+      </>
+    );
+    return () => setActions(null);
+  }, [setActions, handleExportAnalysisCsv, handleExportAnalysisJson]);
+
   return (
     <>
-      <Header title="تحلیل فروش و درآمد" onLogout={onLogout} hideMenu={true}>
-        <button onClick={handleExportAnalysisCsv} className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border">
-          صادر کردن CSV
-        </button>
-        <button onClick={handleExportAnalysisJson} className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border">
-          صادر کردن JSON
-        </button>
-      </Header>
+      <Header title="تحلیل فروش و درآمد" hideMenu={true} />
 
       <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-6">
         {/* PERIOD SELECTOR */}
