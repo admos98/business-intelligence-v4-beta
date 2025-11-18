@@ -180,26 +180,29 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
 
   // Register page actions with Navbar
   useEffect(() => {
-    setActions(
+    const actions = (
       <>
-        <Button variant="secondary" size="sm" onClick={onViewSummary} fullWidth>
+        <Button key="summary" variant="secondary" size="sm" onClick={onViewSummary} fullWidth>
           {t.executiveSummary}
         </Button>
-        <Button variant="primary" size="sm" onClick={() => setIsReportsModalOpen(true)} fullWidth>
+        <Button key="reports" variant="primary" size="sm" onClick={() => setIsReportsModalOpen(true)} fullWidth>
           {t.generateReport}
         </Button>
-        <Button variant="ghost" size="sm" onClick={onViewAnalysis} fullWidth>
+        <Button key="analysis" variant="ghost" size="sm" onClick={onViewAnalysis} fullWidth>
           {t.analysisDashboard}
         </Button>
-        <Button variant="ghost" size="sm" onClick={onViewVendors} fullWidth>
+        <Button key="vendors" variant="ghost" size="sm" onClick={onViewVendors} fullWidth>
           {t.manageVendors}
         </Button>
-        <Button variant="ghost" size="sm" onClick={onViewItems} fullWidth>
+        <Button key="items" variant="ghost" size="sm" onClick={onViewItems} fullWidth>
           {t.manageItems}
         </Button>
       </>
     );
-    return () => setActions(null);
+    setActions(actions);
+    return () => {
+      setTimeout(() => setActions(null), 0);
+    };
   }, [setActions, onViewSummary, onViewAnalysis, onViewVendors, onViewItems, setIsReportsModalOpen]);
 
   return (

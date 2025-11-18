@@ -228,17 +228,20 @@ const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack }) => {
 
   // Register page actions with Navbar
   useEffect(() => {
-    setActions(
+    const actions = (
       <>
-        <Button variant="ghost" size="sm" onClick={handleExportCsv} disabled={allItems.length === 0} fullWidth>
+        <Button key="export-csv" variant="ghost" size="sm" onClick={handleExportCsv} disabled={allItems.length === 0} fullWidth>
           {t.exportCsv || 'صادر CSV'}
         </Button>
-        <Button variant="ghost" size="sm" onClick={handleExportJson} disabled={allItems.length === 0} fullWidth>
+        <Button key="export-json" variant="ghost" size="sm" onClick={handleExportJson} disabled={allItems.length === 0} fullWidth>
           {t.exportJson}
         </Button>
       </>
     );
-    return () => setActions(null);
+    setActions(actions);
+    return () => {
+      setTimeout(() => setActions(null), 0);
+    };
   }, [setActions, handleExportCsv, handleExportJson, allItems.length]);
 
   return (

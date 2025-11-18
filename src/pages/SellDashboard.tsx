@@ -336,23 +336,27 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
 
   // Register page actions with Navbar
   useEffect(() => {
-    setActions(
+    const actions = (
       <>
-        <Button variant="ghost" size="sm" onClick={handleExportTransactionsCsv} fullWidth>
+        <Button key="export-csv" variant="ghost" size="sm" onClick={handleExportTransactionsCsv} fullWidth>
           صادر CSV
         </Button>
-        <Button variant="ghost" size="sm" onClick={handleExportTransactionsJson} fullWidth>
+        <Button key="export-json" variant="ghost" size="sm" onClick={handleExportTransactionsJson} fullWidth>
           صادر JSON
         </Button>
-        <Button variant="primary" size="sm" onClick={handlePrintCart} fullWidth>
+        <Button key="print-cart" variant="primary" size="sm" onClick={handlePrintCart} fullWidth>
           چاپ سبد
         </Button>
-        <Button variant="secondary" size="sm" onClick={onViewSellAnalysis} fullWidth>
+        <Button key="sell-analysis" variant="secondary" size="sm" onClick={onViewSellAnalysis} fullWidth>
           تحلیل فروش
         </Button>
       </>
     );
-    return () => setActions(null);
+    setActions(actions);
+    return () => {
+      // Use setTimeout to ensure cleanup happens after render
+      setTimeout(() => setActions(null), 0);
+    };
   }, [setActions, handleExportTransactionsCsv, handleExportTransactionsJson, handlePrintCart, onViewSellAnalysis]);
 
   return (

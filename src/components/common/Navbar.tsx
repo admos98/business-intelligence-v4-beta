@@ -127,7 +127,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate, onLogout, page
 
           {/* Page-specific actions */}
           {pageActions && !isCollapsed && (
-            <div className="p-4 border-t border-border">
+            <div key="page-actions" className="p-4 border-t border-border">
               <div className="space-y-2">
                 {pageActions}
               </div>

@@ -347,14 +347,17 @@ useEffect(() => {
 
   // Register page actions with Navbar
   useEffect(() => {
-    setActions(
+    const actions = (
       <>
-        <Button variant="ghost" size="sm" onClick={handleExportJson} disabled={!summaryData} fullWidth>
+        <Button key="export-json" variant="ghost" size="sm" onClick={handleExportJson} disabled={!summaryData} fullWidth>
           {t.exportJson}
         </Button>
       </>
     );
-    return () => setActions(null);
+    setActions(actions);
+    return () => {
+      setTimeout(() => setActions(null), 0);
+    };
   }, [setActions, handleExportJson, summaryData]);
 
   return (

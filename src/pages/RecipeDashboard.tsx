@@ -199,20 +199,23 @@ const RecipeDashboard: React.FC<RecipeDashboardProps> = () => {
 
   // Register page actions with Navbar
   useEffect(() => {
-    setActions(
+    const actions = (
       <>
-        <Button variant="ghost" size="sm" onClick={handleExportRecipesCsv} fullWidth>
+        <Button key="export-csv" variant="ghost" size="sm" onClick={handleExportRecipesCsv} fullWidth>
           صادر CSV
         </Button>
-        <Button variant="ghost" size="sm" onClick={handleExportRecipesJson} fullWidth>
+        <Button key="export-json" variant="ghost" size="sm" onClick={handleExportRecipesJson} fullWidth>
           صادر JSON
         </Button>
-        <Button variant="primary" size="sm" onClick={handlePrintRecipes} fullWidth>
+        <Button key="print" variant="primary" size="sm" onClick={handlePrintRecipes} fullWidth>
           چاپ
         </Button>
       </>
     );
-    return () => setActions(null);
+    setActions(actions);
+    return () => {
+      setTimeout(() => setActions(null), 0);
+    };
   }, [setActions, handleExportRecipesCsv, handleExportRecipesJson, handlePrintRecipes]);
 
   return (

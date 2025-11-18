@@ -344,20 +344,23 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
 
   // Register page actions with Navbar
   useEffect(() => {
-    setActions(
+    const actions = (
       <>
-        <Button variant="ghost" size="sm" onClick={handleExportCsv} fullWidth>
+        <Button key="export-csv" variant="ghost" size="sm" onClick={handleExportCsv} fullWidth>
           صادر CSV
         </Button>
-        <Button variant="ghost" size="sm" onClick={handleExportJson} fullWidth>
+        <Button key="export-json" variant="ghost" size="sm" onClick={handleExportJson} fullWidth>
           {t.exportListJson}
         </Button>
-        <Button variant="primary" size="sm" onClick={handleDownloadDailyReport} disabled={isPdfLoading} fullWidth>
+        <Button key="download-report" variant="primary" size="sm" onClick={handleDownloadDailyReport} disabled={isPdfLoading} fullWidth>
           {isPdfLoading ? t.downloadingPdf : t.downloadReport}
         </Button>
       </>
     );
-    return () => setActions(null);
+    setActions(actions);
+    return () => {
+      setTimeout(() => setActions(null), 0);
+    };
   }, [setActions, handleExportCsv, handleExportJson, handleDownloadDailyReport, isPdfLoading]);
 
   if (!list) return (

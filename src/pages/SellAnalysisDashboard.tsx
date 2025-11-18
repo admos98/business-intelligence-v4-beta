@@ -64,17 +64,20 @@ const SellAnalysisDashboard: React.FC<SellAnalysisDashboardProps> = () => {
 
   // Register page actions with Navbar
   useEffect(() => {
-    setActions(
+    const actions = (
       <>
-        <Button variant="ghost" size="sm" onClick={handleExportAnalysisCsv} fullWidth>
+        <Button key="export-csv" variant="ghost" size="sm" onClick={handleExportAnalysisCsv} fullWidth>
           صادر CSV
         </Button>
-        <Button variant="ghost" size="sm" onClick={handleExportAnalysisJson} fullWidth>
+        <Button key="export-json" variant="ghost" size="sm" onClick={handleExportAnalysisJson} fullWidth>
           صادر JSON
         </Button>
       </>
     );
-    return () => setActions(null);
+    setActions(actions);
+    return () => {
+      setTimeout(() => setActions(null), 0);
+    };
   }, [setActions, handleExportAnalysisCsv, handleExportAnalysisJson]);
 
   return (
