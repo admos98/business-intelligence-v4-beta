@@ -227,9 +227,10 @@ export interface POSCustomization {
 
 export interface POSVariant {
   id: string;
-  name: string; // e.g., "Single", "Double", "50ml Milk"
+  name: string; // e.g., "Coffee", "Durup", "Syrup"
   priceModifier: number; // delta to base price (can be negative)
   presetCustomizations?: Record<string, string | number>; // e.g., { "Size": "Medium", "Syrup": "Vanilla" }
+  customizations?: POSCustomization[]; // Variant-specific customizations (e.g., coffee lines, decaf, syrup type/amount)
 }
 
 export interface SellTransaction {
@@ -249,7 +250,7 @@ export interface SellTransactionItem {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
-  customizationChoices?: Record<string, string | number>; // Customization selections
+  customizationChoices?: Record<string, string | number | { optionId: string; amount: number }>; // Customization selections (optionId for select options, amount for custom amounts)
   costOfGoods?: number; // Calculated raw cost if from recipe
 }
 

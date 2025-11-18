@@ -6,6 +6,7 @@ interface CardProps {
   className?: string;
   hover?: boolean;
   onClick?: () => void;
+  actions?: React.ReactNode;
 }
 
 const Card: React.FC<CardProps> = ({
@@ -13,7 +14,8 @@ const Card: React.FC<CardProps> = ({
   title,
   className = '',
   hover = false,
-  onClick
+  onClick,
+  actions
 }) => {
   const baseClasses = 'bg-surface p-4 sm:p-6 rounded-xl border border-border shadow-sm transition-all animate-fade-in';
   const hoverClasses = hover || onClick ? 'hover-lift cursor-pointer' : '';
@@ -33,9 +35,16 @@ const Card: React.FC<CardProps> = ({
       } : undefined}
     >
       {title && (
-        <h3 className="font-bold text-md text-primary mb-4 animate-fade-in-down">
-          {title}
-        </h3>
+        <div className="flex justify-between items-center mb-4 animate-fade-in-down">
+          <h3 className="font-bold text-md text-primary">
+            {title}
+          </h3>
+          {actions && (
+            <div className="flex items-center gap-2">
+              {actions}
+            </div>
+          )}
+        </div>
       )}
       <div className="animate-fade-in-up">
         {children}

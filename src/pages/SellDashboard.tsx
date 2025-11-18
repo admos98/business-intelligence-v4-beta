@@ -23,7 +23,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const { posItems, getPOSItemsByCategory, getFrequentPOSItems, addSellTransaction, addPOSItem, updatePOSItem, deletePOSItem, updateSellTransaction, deleteSellTransaction, addPOSCategory, posCategories: storePosCategories } = store;
 
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [cart, setCart] = useState<Map<string, { posItemId: string; name: string; quantity: number; unitPrice: number; customizations: Record<string, string | number> }>>(new Map());
+  const [cart, setCart] = useState<Map<string, { posItemId: string; name: string; quantity: number; unitPrice: number; customizations: Record<string, string | number | { optionId: string; amount: number }> }>>(new Map());
   const [itemSearch, setItemSearch] = useState<string>('');
   const [rushMode, setRushMode] = useState<boolean>(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -32,7 +32,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const [modalItem, setModalItem] = useState<POSItem | null>(null);
   const [modalQty, setModalQty] = useState<number>(1);
   const [modalVariantId, setModalVariantId] = useState<string | undefined>(undefined);
-  const [modalCustomizations, setModalCustomizations] = useState<Record<string, string | number>>({});
+  const [modalCustomizations, setModalCustomizations] = useState<Record<string, string | number | { optionId: string; amount: number }>>({});
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Cash);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [showNewItemForm, setShowNewItemForm] = useState(false);
@@ -73,7 +73,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const cartTotal = cartArray.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
   const finalTotal = Math.max(0, cartTotal - discountAmount);
 
-  const handleAddToCart = (posItem: POSItem, opts?: { variantId?: string; customizations?: Record<string, string | number>; quantity?: number }) => {
+  const handleAddToCart = (posItem: POSItem, opts?: { variantId?: string; customizations?: Record<string, string | number | { optionId: string; amount: number }>; quantity?: number }) => {
     setCart(prev => {
       const newCart = new Map(prev);
       const key = opts && (opts.variantId || Object.keys(opts.customizations || {}).length > 0)
@@ -82,22 +82,101 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
 
       const existing = newCart.get(key);
       const variant = opts?.variantId ? (posItem.variants || []).find(v => v.id === opts.variantId) : undefined;
-      const customizationPrice = (opts?.customizations && Object.keys(opts.customizations).length > 0 && posItem.customizations)
+
+      // Calculate price from global customizations
+      const globalCustomizationPrice = (opts?.customizations && Object.keys(opts.customizations).length > 0 && posItem.customizations)
         ? Object.entries(opts!.customizations!).reduce((s, [k, v]) => {
             const cust = posItem.customizations!.find(c => c.name === k);
+            if (!cust) return s;
+
+            // If customization has options, find the selected option
+            if (cust.options && cust.options.length > 0) {
+              const optionId = typeof v === 'string' ? v : (typeof v === 'object' && v !== null && 'optionId' in v ? (v as { optionId: string }).optionId : String(v));
+              const selectedOption = cust.options.find(opt => opt.id === optionId);
+              if (selectedOption) {
+                // If it's a custom amount option, calculate based on amount
+                if (selectedOption.isCustomAmount && selectedOption.pricePerUnit && typeof v === 'object' && v !== null && 'amount' in v) {
+                  const amount = (v as { amount: number }).amount || 0;
+                  return s + (selectedOption.pricePerUnit * amount);
+                }
+                return s + selectedOption.price;
+              }
+            }
+
+            // Fallback to priceModifier for legacy customizations
             return s + (cust?.priceModifier || 0) * (typeof v === 'number' ? Number(v) : 1);
           }, 0)
         : 0;
 
-      const unitPrice = posItem.sellPrice + (variant ? variant.priceModifier : 0) + customizationPrice;
+      // Calculate price from variant-specific customizations
+      const variantCustomizationPrice = (variant && opts?.customizations && Object.keys(opts.customizations).length > 0 && variant.customizations)
+        ? Object.entries(opts!.customizations!).reduce((s, [k, v]) => {
+            const cust = variant.customizations!.find(c => c.name === k);
+            if (!cust) return s;
+
+            // If customization has options, find the selected option
+            if (cust.options && cust.options.length > 0) {
+              const optionId = typeof v === 'string' ? v : (typeof v === 'object' && v !== null && 'optionId' in v ? (v as { optionId: string }).optionId : String(v));
+              const selectedOption = cust.options.find(opt => opt.id === optionId);
+              if (selectedOption) {
+                // If it's a custom amount option, calculate based on amount
+                if (selectedOption.isCustomAmount && selectedOption.pricePerUnit && typeof v === 'object' && v !== null && 'amount' in v) {
+                  const amount = (v as { amount: number }).amount || 0;
+                  return s + (selectedOption.pricePerUnit * amount);
+                }
+                return s + selectedOption.price;
+              }
+            }
+
+            // Fallback to priceModifier for legacy customizations
+            return s + (cust?.priceModifier || 0) * (typeof v === 'number' ? Number(v) : 1);
+          }, 0)
+        : 0;
+
+      const unitPrice = posItem.sellPrice + (variant ? variant.priceModifier : 0) + globalCustomizationPrice + variantCustomizationPrice;
+
+      // Build display name with variant and customizations
+      let displayName = posItem.name;
+      if (variant) {
+        displayName += ` (${variant.name})`;
+      }
+      if (opts?.customizations && Object.keys(opts.customizations).length > 0) {
+        const custParts: string[] = [];
+        Object.entries(opts.customizations).forEach(([custName, custValue]) => {
+          const cust = posItem.customizations?.find(c => c.name === custName);
+          if (cust && cust.options) {
+            if (typeof custValue === 'object' && 'optionId' in custValue) {
+              const opt = cust.options.find(o => o.id === custValue.optionId);
+              if (opt) {
+                let optLabel = opt.label;
+                if (opt.isCustomAmount && custValue.amount) {
+                  optLabel += ` ${custValue.amount}${opt.unit || ''}`;
+                }
+                custParts.push(optLabel);
+              }
+            } else if (typeof custValue === 'string') {
+              const opt = cust.options.find(o => o.id === custValue);
+              if (opt) {
+                custParts.push(opt.label);
+              }
+            }
+          } else if (custValue) {
+            custParts.push(`${custName}: ${custValue}`);
+          }
+        });
+        if (custParts.length > 0) {
+          displayName += ` [${custParts.join(', ')}]`;
+        }
+      }
 
       if (existing) {
         existing.quantity += opts?.quantity || 1;
         existing.unitPrice = unitPrice; // update to latest price
+        existing.name = displayName; // update name in case customizations changed
       } else {
         newCart.set(key, {
           posItemId: posItem.id,
-          name: posItem.name + (variant ? ` (${variant.name})` : ''),
+          name: displayName,
           quantity: opts?.quantity || 1,
           unitPrice,
           customizations: opts?.customizations || {},
@@ -167,13 +246,13 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     return () => window.removeEventListener('keydown', handler);
   }, [frequentItems, rushMode, cartArray.length, modalItem, showNewItemForm]);
 
-  const handleUpdateCartQuantity = (posItemId: string, quantity: number) => {
+  const handleUpdateCartQuantity = (cartKey: string, quantity: number) => {
     setCart(prev => {
       const newCart = new Map(prev);
       if (quantity <= 0) {
-        newCart.delete(posItemId);
+        newCart.delete(cartKey);
       } else {
-        const item = newCart.get(posItemId);
+        const item = newCart.get(cartKey);
         if (item) {
           item.quantity = quantity;
         }
@@ -182,10 +261,10 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     });
   };
 
-  const handleRemoveFromCart = (posItemId: string) => {
+  const handleRemoveFromCart = (cartKey: string) => {
     setCart(prev => {
       const newCart = new Map(prev);
-      newCart.delete(posItemId);
+      newCart.delete(cartKey);
       return newCart;
     });
   };
@@ -291,8 +370,25 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   };
 
   // New POS item creation supports variants and customizations
-  const [newItemVariants, setNewItemVariants] = useState<{ id: string; name: string; priceModifier: number }[]>([]);
-  const [newItemCustomizations, setNewItemCustomizations] = useState<{ id: string; name: string; type: 'select' | 'number' | 'text'; priceModifier?: number }[]>([]);
+  const [newItemVariants, setNewItemVariants] = useState<{
+    id: string;
+    name: string;
+    priceModifier: number;
+    customizations?: {
+      id: string;
+      name: string;
+      type: 'select' | 'number' | 'text';
+      options?: { id: string; label: string; price: number; isCustomAmount?: boolean; unit?: string; pricePerUnit?: number }[];
+      priceModifier?: number;
+    }[];
+  }[]>([]);
+  const [newItemCustomizations, setNewItemCustomizations] = useState<{
+    id: string;
+    name: string;
+    type: 'select' | 'number' | 'text';
+    options?: { id: string; label: string; price: number; isCustomAmount?: boolean; unit?: string; pricePerUnit?: number }[];
+    priceModifier?: number;
+  }[]>([]);
 
   const handleAddNewPOSItem = () => {
     if (!newItemForm.name || !newItemForm.category || newItemForm.sellPrice <= 0) {
@@ -305,8 +401,39 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       category: newItemForm.category,
       sellPrice: newItemForm.sellPrice,
       unit: Unit.Piece,
-      variants: newItemVariants.map(v => ({ id: v.id, name: v.name, priceModifier: v.priceModifier })),
-      customizations: newItemCustomizations.length > 0 ? newItemCustomizations.map(c => ({ id: c.id, name: c.name, type: c.type, priceModifier: c.priceModifier })) : undefined,
+      variants: newItemVariants.map(v => ({
+        id: v.id,
+        name: v.name,
+        priceModifier: v.priceModifier,
+        customizations: v.customizations?.map(c => ({
+          id: c.id,
+          name: c.name,
+          type: c.type,
+          options: c.options?.map(opt => ({
+            id: opt.id,
+            label: opt.label,
+            price: opt.price,
+            isCustomAmount: opt.isCustomAmount,
+            unit: opt.unit,
+            pricePerUnit: opt.pricePerUnit
+          })),
+          priceModifier: c.priceModifier
+        }))
+      })),
+      customizations: newItemCustomizations.length > 0 ? newItemCustomizations.map(c => ({
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        options: c.options?.map(opt => ({
+          id: opt.id,
+          label: opt.label,
+          price: opt.price,
+          isCustomAmount: opt.isCustomAmount,
+          unit: opt.unit,
+          pricePerUnit: opt.pricePerUnit
+        })),
+        priceModifier: c.priceModifier
+      })) : undefined,
     };
 
     addPOSItem(payload);
@@ -321,9 +448,47 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const handleEditItem = (item: POSItem) => {
     setEditingItem(item);
     setNewItemForm({ name: item.name, category: item.category, sellPrice: item.sellPrice });
-    setNewItemVariants(item.variants?.map(v => ({ id: v.id, name: v.name, priceModifier: v.priceModifier })) || []);
-    setNewItemCustomizations(item.customizations?.map(c => ({ id: c.id, name: c.name, type: c.type, priceModifier: c.priceModifier || 0 })) || []);
+    setNewItemVariants(item.variants?.map(v => ({
+      id: v.id,
+      name: v.name,
+      priceModifier: v.priceModifier,
+      customizations: v.customizations?.map(c => ({
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        options: c.options?.map(opt => ({
+          id: opt.id,
+          label: opt.label,
+          price: opt.price,
+          isCustomAmount: opt.isCustomAmount,
+          unit: opt.unit,
+          pricePerUnit: opt.pricePerUnit
+        })),
+        priceModifier: c.priceModifier || 0
+      }))
+    })) || []);
+    setNewItemCustomizations(item.customizations?.map(c => ({
+      id: c.id,
+      name: c.name,
+      type: c.type,
+      options: c.options?.map(opt => ({
+        id: opt.id,
+        label: opt.label,
+        price: opt.price,
+        isCustomAmount: opt.isCustomAmount,
+        unit: opt.unit,
+        pricePerUnit: opt.pricePerUnit
+      })),
+      priceModifier: c.priceModifier || 0
+    })) || []);
     setShowNewItemForm(true);
+    // Scroll to form
+    setTimeout(() => {
+      const formElement = document.querySelector('[data-item-form]');
+      if (formElement) {
+        formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
   };
 
   const handleUpdatePOSItem = () => {
@@ -336,8 +501,39 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       name: newItemForm.name,
       category: newItemForm.category,
       sellPrice: newItemForm.sellPrice,
-      variants: newItemVariants.map(v => ({ id: v.id, name: v.name, priceModifier: v.priceModifier })),
-      customizations: newItemCustomizations.length > 0 ? newItemCustomizations.map(c => ({ id: c.id, name: c.name, type: c.type, priceModifier: c.priceModifier })) : undefined,
+      variants: newItemVariants.map(v => ({
+        id: v.id,
+        name: v.name,
+        priceModifier: v.priceModifier,
+        customizations: v.customizations?.map(c => ({
+          id: c.id,
+          name: c.name,
+          type: c.type,
+          options: c.options?.map(opt => ({
+            id: opt.id,
+            label: opt.label,
+            price: opt.price,
+            isCustomAmount: opt.isCustomAmount,
+            unit: opt.unit,
+            pricePerUnit: opt.pricePerUnit
+          })),
+          priceModifier: c.priceModifier
+        }))
+      })),
+      customizations: newItemCustomizations.length > 0 ? newItemCustomizations.map(c => ({
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        options: c.options?.map(opt => ({
+          id: opt.id,
+          label: opt.label,
+          price: opt.price,
+          isCustomAmount: opt.isCustomAmount,
+          unit: opt.unit,
+          pricePerUnit: opt.pricePerUnit
+        })),
+        priceModifier: c.priceModifier
+      })) : undefined,
     });
 
     setEditingItem(null);
@@ -556,12 +752,36 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
             )}
 
             {/* Items Grid - Large buttons for speed */}
-            <Card title={`${selectedCategory || 'همه'} (${currentCategoryItems.length})`} className="animate-fade-in">
+            <Card
+              title={`${selectedCategory || 'همه'} (${currentCategoryItems.length})`}
+              className="animate-fade-in"
+              actions={
+                <Button
+                  onClick={() => {
+                    setEditingItem(null);
+                    setNewItemForm({ name: '', category: selectedCategory || '', sellPrice: 0 });
+                    setNewItemVariants([]);
+                    setNewItemCustomizations([]);
+                    setShowNewItemForm(true);
+                  }}
+                  variant="primary"
+                  size="sm"
+                >
+                  + افزودن کالا
+                </Button>
+              }
+            >
               {currentCategoryItems.length === 0 ? (
                 <div className="text-center py-16">
                   <p className="text-secondary text-lg mb-4">هیچ کالایی در این دسته وجود ندارد</p>
                   <Button
-                    onClick={() => setShowNewItemForm(true)}
+                    onClick={() => {
+                      setEditingItem(null);
+                      setNewItemForm({ name: '', category: selectedCategory || '', sellPrice: 0 });
+                      setNewItemVariants([]);
+                      setNewItemCustomizations([]);
+                      setShowNewItemForm(true);
+                    }}
                     variant="primary"
                   >
                     افزودن کالای جدید
@@ -595,7 +815,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                           <div className="text-sm text-accent font-semibold"><CurrencyDisplay value={item.sellPrice} /></div>
                           {inCart && (
                             <div className="text-xs text-accent mt-1">
-                              {cartArray.find(c => c.posItemId === item.id)?.quantity || 0}×
+                              {cartArray.filter(c => c.posItemId === item.id).reduce((sum, c) => sum + c.quantity, 0)}×
                             </div>
                           )}
                         </button>
@@ -631,72 +851,9 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
               )}
             </Card>
 
-            {showNewItemForm && (
-              <div className="mt-4 p-4 bg-background rounded-lg border border-border space-y-3">
-                <input
-                  type="text"
-                  placeholder="نام کالا"
-                  value={newItemForm.name}
-                  onChange={(e) => setNewItemForm({ ...newItemForm, name: e.target.value })}
-                  className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
-                />
-                <select
-                  value={newItemForm.category}
-                  onChange={(e) => setNewItemForm({ ...newItemForm, category: e.target.value })}
-                  className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
-                >
-                  <option value="">انتخاب دسته‌بندی</option>
-                  {posCategories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  placeholder="قیمت فروش (ریال)"
-                  value={newItemForm.sellPrice || ''}
-                  onChange={(e) => setNewItemForm({ ...newItemForm, sellPrice: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
-                />
-                {/* VARIANTS EDITOR */}
-                <div className="mt-3">
-                  <label className="text-sm font-medium text-primary block mb-2">ورنش‌های آماده (اختیاری)</label>
-                  <div className="space-y-2">
-                    {newItemVariants.map((v, idx) => (
-                      <div key={v.id} className="flex gap-2">
-                        <input value={v.name} onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))} className="flex-1 px-2 py-1 bg-surface border border-border rounded" />
-                        <input type="number" value={String(v.priceModifier)} onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? { ...p, priceModifier: parseFloat(e.target.value) || 0 } : p))} className="w-28 px-2 py-1 bg-surface border border-border rounded" />
-                        <button onClick={() => setNewItemVariants(prev => prev.filter((_, i) => i !== idx))} className="px-2 py-1 bg-danger/10 text-danger rounded">حذف</button>
-                      </div>
-                    ))}
-                    <div className="flex gap-2 mt-2">
-                      <input id="new-variant-name" placeholder="نام ورژن (مثال: دوبل)" className="flex-1 px-2 py-1 bg-surface border border-border rounded" />
-                      <input id="new-variant-price" type="number" placeholder="+500" className="w-28 px-2 py-1 bg-surface border border-border rounded" />
-                      <button onClick={() => {
-                        const nEl = document.getElementById('new-variant-name') as HTMLInputElement | null;
-                        const pEl = document.getElementById('new-variant-price') as HTMLInputElement | null;
-                        if (!nEl) return;
-                        const name = nEl.value.trim();
-                        const price = pEl ? parseFloat(pEl.value) || 0 : 0;
-                        if (!name) return;
-                        setNewItemVariants(prev => [...prev, { id: `var-${Date.now()}-${Math.random()}`, name, priceModifier: price }]);
-                        nEl.value = '';
-                        if (pEl) pEl.value = '';
-                      }} className="px-3 py-1 bg-accent text-accent-text rounded">افزودن ورژن</button>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={handleAddNewPOSItem}
-                  className="w-full px-3 py-2 bg-accent text-accent-text font-medium rounded-lg hover:opacity-90 transition-opacity"
-                >
-                  افزودن
-                </button>
-              </div>
-            )}
-
             {/* New/Edit Item Form */}
             {showNewItemForm && (
-              <Card title={editingItem ? "ویرایش کالا" : "افزودن کالای جدید"} className="animate-fade-in">
+              <Card title={editingItem ? "ویرایش کالا" : "افزودن کالای جدید"} className="animate-fade-in" data-item-form>
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -734,33 +891,357 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                     </div>
                   </div>
 
+                  {/* CUSTOMIZATIONS EDITOR */}
+                  <div className="mt-4">
+                    <label className="text-sm font-medium text-primary block mb-2">
+                      سفارشی‌سازی‌ها (اختیاری)
+                      <span className="text-xs text-secondary block mt-1">مثال: نوع قهوه، شربت، سفارش بیرون‌بر/کافه</span>
+                    </label>
+                    <div className="space-y-4">
+                      {newItemCustomizations.map((cust, custIdx) => (
+                        <div key={cust.id} className="p-3 bg-background rounded-lg border border-border">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex-1">
+                              <input
+                                value={cust.name}
+                                onChange={e => setNewItemCustomizations(prev => prev.map((c, i) => i === custIdx ? { ...c, name: e.target.value } : c))}
+                                className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                                placeholder="نام سفارشی‌سازی (مثال: نوع قهوه)"
+                              />
+                            </div>
+                            <select
+                              value={cust.type}
+                              onChange={e => setNewItemCustomizations(prev => prev.map((c, i) => i === custIdx ? { ...c, type: e.target.value as 'select' | 'number' | 'text' } : c))}
+                              className="ml-2 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                            >
+                              <option value="select">انتخابی</option>
+                              <option value="number">عدد</option>
+                              <option value="text">متن</option>
+                            </select>
+                            <Button variant="danger" size="sm" onClick={() => setNewItemCustomizations(prev => prev.filter((_, i) => i !== custIdx))} className="ml-2">
+                              حذف
+                            </Button>
+                          </div>
+
+                          {/* Options for select type */}
+                          {cust.type === 'select' && (
+                            <div className="mt-3 space-y-2">
+                              <label className="text-xs text-secondary block mb-1">گزینه‌ها:</label>
+                              {cust.options?.map((opt, optIdx) => (
+                                <div key={opt.id} className="flex gap-2 items-center">
+                                  <input
+                                    value={opt.label}
+                                    onChange={e => setNewItemCustomizations(prev => prev.map((c, i) =>
+                                      i === custIdx ? {
+                                        ...c,
+                                        options: c.options?.map((o, oi) => oi === optIdx ? { ...o, label: e.target.value } : o) || []
+                                      } : c
+                                    ))}
+                                    className="flex-1 px-2 py-1 bg-surface border border-border rounded text-sm"
+                                    placeholder="برچسب (مثال: 8/20 Robusta)"
+                                  />
+                                  <input
+                                    type="number"
+                                    value={String(opt.price)}
+                                    onChange={e => setNewItemCustomizations(prev => prev.map((c, i) =>
+                                      i === custIdx ? {
+                                        ...c,
+                                        options: c.options?.map((o, oi) => oi === optIdx ? { ...o, price: parseFloat(e.target.value) || 0 } : o) || []
+                                      } : c
+                                    ))}
+                                    className="w-24 px-2 py-1 bg-surface border border-border rounded text-sm"
+                                    placeholder="قیمت"
+                                  />
+                                  <label className="flex items-center gap-1 text-xs">
+                                    <input
+                                      type="checkbox"
+                                      checked={opt.isCustomAmount || false}
+                                      onChange={e => setNewItemCustomizations(prev => prev.map((c, i) =>
+                                        i === custIdx ? {
+                                          ...c,
+                                          options: c.options?.map((o, oi) => oi === optIdx ? { ...o, isCustomAmount: e.target.checked } : o) || []
+                                        } : c
+                                      ))}
+                                    />
+                                    مقدار سفارشی
+                                  </label>
+                                  {opt.isCustomAmount && (
+                                    <>
+                                      <input
+                                        value={opt.unit || ''}
+                                        onChange={e => setNewItemCustomizations(prev => prev.map((c, i) =>
+                                          i === custIdx ? {
+                                            ...c,
+                                            options: c.options?.map((o, oi) => oi === optIdx ? { ...o, unit: e.target.value } : o) || []
+                                          } : c
+                                        ))}
+                                        className="w-16 px-2 py-1 bg-surface border border-border rounded text-sm"
+                                        placeholder="واحد"
+                                      />
+                                      <input
+                                        type="number"
+                                        value={String(opt.pricePerUnit || '')}
+                                        onChange={e => setNewItemCustomizations(prev => prev.map((c, i) =>
+                                          i === custIdx ? {
+                                            ...c,
+                                            options: c.options?.map((o, oi) => oi === optIdx ? { ...o, pricePerUnit: parseFloat(e.target.value) || 0 } : o) || []
+                                          } : c
+                                        ))}
+                                        className="w-24 px-2 py-1 bg-surface border border-border rounded text-sm"
+                                        placeholder="قیمت/واحد"
+                                      />
+                                    </>
+                                  )}
+                                  <Button variant="danger" size="sm" onClick={() => setNewItemCustomizations(prev => prev.map((c, i) =>
+                                    i === custIdx ? {
+                                      ...c,
+                                      options: c.options?.filter((_, oi) => oi !== optIdx) || []
+                                    } : c
+                                  ))}>
+                                    ×
+                                  </Button>
+                                </div>
+                              ))}
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  const newOptId = `opt-${Date.now()}-${Math.random()}`;
+                                  setNewItemCustomizations(prev => prev.map((c, i) =>
+                                    i === custIdx ? {
+                                      ...c,
+                                      options: [...(c.options || []), { id: newOptId, label: '', price: 0 }]
+                                    } : c
+                                  ));
+                                }}
+                              >
+                                + افزودن گزینه
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setNewItemCustomizations(prev => [...prev, {
+                            id: `cust-${Date.now()}-${Math.random()}`,
+                            name: '',
+                            type: 'select',
+                            options: []
+                          }]);
+                        }}
+                      >
+                        + افزودن سفارشی‌سازی
+                      </Button>
+                    </div>
+                  </div>
+
                   {/* VARIANTS EDITOR */}
-                  <div className="mt-3">
-                    <label className="text-sm font-medium text-primary block mb-2">ورژن‌های آماده (اختیاری)</label>
-                    <div className="space-y-2">
+                  <div className="mt-4">
+                    <label className="text-sm font-medium text-primary block mb-2">
+                      ورژن‌های آماده (اختیاری)
+                      <span className="text-xs text-secondary block mt-1">مثال: قهوه (با گزینه‌های خطوط قهوه، دکاف)، شربت (با گزینه‌های نوع و مقدار)</span>
+                    </label>
+                    <div className="space-y-4">
                       {newItemVariants.map((v, idx) => (
-                        <div key={v.id} className="flex gap-2">
-                          <input
-                            value={v.name}
-                            onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))}
-                            className="flex-1 px-2 py-1 bg-surface border border-border rounded"
-                            placeholder="نام ورژن"
-                          />
-                          <input
-                            type="number"
-                            value={String(v.priceModifier)}
-                            onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? { ...p, priceModifier: parseFloat(e.target.value) || 0 } : p))}
-                            className="w-28 px-2 py-1 bg-surface border border-border rounded"
-                            placeholder="+500"
-                          />
-                          <Button variant="danger" size="sm" onClick={() => setNewItemVariants(prev => prev.filter((_, i) => i !== idx))}>
-                            حذف
-                          </Button>
+                        <div key={v.id} className="p-4 bg-background rounded-lg border-2 border-border">
+                          <div className="flex gap-2 items-center mb-3">
+                            <input
+                              value={v.name}
+                              onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))}
+                              className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                              placeholder="نام ورژن (مثال: قهوه)"
+                            />
+                            <input
+                              type="number"
+                              value={String(v.priceModifier)}
+                              onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? { ...p, priceModifier: parseFloat(e.target.value) || 0 } : p))}
+                              className="w-32 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                              placeholder="تغییر قیمت"
+                            />
+                            <Button variant="danger" size="sm" onClick={() => setNewItemVariants(prev => prev.filter((_, i) => i !== idx))}>
+                              حذف ورژن
+                            </Button>
+                          </div>
+
+                          {/* Variant-specific customizations */}
+                          <div className="mt-3 pt-3 border-t border-border">
+                            <label className="text-xs font-medium text-secondary block mb-2">
+                              سفارشی‌سازی‌های این ورژن (مثال: برای قهوه: خطوط قهوه، دکاف/عادی)
+                            </label>
+                            <div className="space-y-3">
+                              {(v.customizations || []).map((cust, custIdx) => (
+                                <div key={cust.id} className="p-2 bg-surface rounded border border-border">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <input
+                                      value={cust.name}
+                                      onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
+                                        ...p,
+                                        customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? { ...c, name: e.target.value } : c)
+                                      } : p))}
+                                      className="flex-1 px-2 py-1 bg-background border border-border rounded text-sm"
+                                      placeholder="نام (مثال: خطوط قهوه)"
+                                    />
+                                    <select
+                                      value={cust.type}
+                                      onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
+                                        ...p,
+                                        customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? { ...c, type: e.target.value as 'select' | 'number' | 'text' } : c)
+                                      } : p))}
+                                      className="ml-2 px-2 py-1 bg-background border border-border rounded text-sm"
+                                    >
+                                      <option value="select">انتخابی</option>
+                                      <option value="number">عدد</option>
+                                      <option value="text">متن</option>
+                                    </select>
+                                    <Button variant="danger" size="sm" onClick={() => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
+                                      ...p,
+                                      customizations: (p.customizations || []).filter((_, ci) => ci !== custIdx)
+                                    } : p))} className="ml-2">
+                                      ×
+                                    </Button>
+                                  </div>
+
+                                  {/* Options for select type */}
+                                  {cust.type === 'select' && (
+                                    <div className="mt-2 space-y-1">
+                                      {cust.options?.map((opt, optIdx) => (
+                                        <div key={opt.id} className="flex gap-1 items-center text-xs">
+                                          <input
+                                            value={opt.label}
+                                            onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
+                                              ...p,
+                                              customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
+                                                ...c,
+                                                options: c.options?.map((o, oi) => oi === optIdx ? { ...o, label: e.target.value } : o) || []
+                                              } : c)
+                                            } : p))}
+                                            className="flex-1 px-2 py-1 bg-background border border-border rounded"
+                                            placeholder="برچسب"
+                                          />
+                                          <input
+                                            type="number"
+                                            value={String(opt.price)}
+                                            onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
+                                              ...p,
+                                              customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
+                                                ...c,
+                                                options: c.options?.map((o, oi) => oi === optIdx ? { ...o, price: parseFloat(e.target.value) || 0 } : o) || []
+                                              } : c)
+                                            } : p))}
+                                            className="w-20 px-2 py-1 bg-background border border-border rounded"
+                                            placeholder="قیمت"
+                                          />
+                                          <label className="flex items-center gap-1 text-xs whitespace-nowrap">
+                                            <input
+                                              type="checkbox"
+                                              checked={opt.isCustomAmount || false}
+                                              onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
+                                                ...p,
+                                                customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
+                                                  ...c,
+                                                  options: c.options?.map((o, oi) => oi === optIdx ? { ...o, isCustomAmount: e.target.checked } : o) || []
+                                                } : c)
+                                              } : p))}
+                                            />
+                                            سفارشی
+                                          </label>
+                                          {opt.isCustomAmount && (
+                                            <>
+                                              <input
+                                                value={opt.unit || ''}
+                                                onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
+                                                  ...p,
+                                                  customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
+                                                    ...c,
+                                                    options: c.options?.map((o, oi) => oi === optIdx ? { ...o, unit: e.target.value } : o) || []
+                                                  } : c)
+                                                } : p))}
+                                                className="w-16 px-1 py-1 bg-background border border-border rounded text-xs"
+                                                placeholder="واحد"
+                                              />
+                                              <input
+                                                type="number"
+                                                value={String(opt.pricePerUnit || '')}
+                                                onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
+                                                  ...p,
+                                                  customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
+                                                    ...c,
+                                                    options: c.options?.map((o, oi) => oi === optIdx ? { ...o, pricePerUnit: parseFloat(e.target.value) || 0 } : o) || []
+                                                  } : c)
+                                                } : p))}
+                                                className="w-20 px-1 py-1 bg-background border border-border rounded text-xs"
+                                                placeholder="قیمت/واحد"
+                                              />
+                                            </>
+                                          )}
+                                          <Button variant="danger" size="sm" onClick={() => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
+                                            ...p,
+                                            customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
+                                              ...c,
+                                              options: c.options?.filter((_, oi) => oi !== optIdx) || []
+                                            } : c)
+                                          } : p))}>
+                                            ×
+                                          </Button>
+                                        </div>
+                                      ))}
+                                      <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => {
+                                          const newOptId = `opt-${Date.now()}-${Math.random()}`;
+                                          setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
+                                            ...p,
+                                            customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
+                                              ...c,
+                                              options: [...(c.options || []), { id: newOptId, label: '', price: 0 }]
+                                            } : c)
+                                          } : p));
+                                        }}
+                                      >
+                                        + افزودن گزینه
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  const newCustId = `cust-${Date.now()}-${Math.random()}`;
+                                  setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
+                                    ...p,
+                                    customizations: [...(p.customizations || []), {
+                                      id: newCustId,
+                                      name: '',
+                                      type: 'select',
+                                      options: []
+                                    }]
+                                  } : p));
+                                }}
+                              >
+                                + افزودن سفارشی‌سازی به این ورژن
+                              </Button>
+                            </div>
+                          </div>
                         </div>
                       ))}
                       <div className="flex gap-2 mt-2">
-                        <input id="new-variant-name" placeholder="نام ورژن (مثال: دوبل)" className="flex-1 px-2 py-1 bg-surface border border-border rounded" />
-                        <input id="new-variant-price" type="number" placeholder="+500" className="w-28 px-2 py-1 bg-surface border border-border rounded" />
+                        <input
+                          id="new-variant-name"
+                          placeholder="نام ورژن (مثال: قهوه، دوروپ)"
+                          className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                        />
+                        <input
+                          id="new-variant-price"
+                          type="number"
+                          placeholder="تغییر قیمت (مثال: +5000 یا -2000)"
+                          className="w-40 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                        />
                         <Button
                           variant="primary"
                           size="sm"
@@ -770,13 +1251,17 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                             if (!nEl) return;
                             const name = nEl.value.trim();
                             const price = pEl ? parseFloat(pEl.value) || 0 : 0;
-                            if (!name) return;
-                            setNewItemVariants(prev => [...prev, { id: `var-${Date.now()}-${Math.random()}`, name, priceModifier: price }]);
+                            if (!name) {
+                              addToast('لطفاً نام ورژن را وارد کنید', 'error');
+                              return;
+                            }
+                            setNewItemVariants(prev => [...prev, { id: `var-${Date.now()}-${Math.random()}`, name, priceModifier: price, customizations: [] }]);
                             nEl.value = '';
                             if (pEl) pEl.value = '';
+                            addToast(`ورژن "${name}" اضافه شد`, 'success');
                           }}
                         >
-                          افزودن ورژن
+                          + افزودن ورژن
                         </Button>
                       </div>
                     </div>
@@ -828,7 +1313,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                             <CurrencyDisplay value={item.unitPrice} className="text-xs text-secondary" />
                           </div>
                           <button
-                            onClick={() => handleRemoveFromCart(item.posItemId)}
+                            onClick={() => handleRemoveFromCart(cartKey)}
                             className="text-danger hover:text-danger/80 transition-colors p-1 hover:bg-danger/10 rounded"
                             aria-label="حذف از سبد"
                           >
@@ -838,7 +1323,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 bg-background rounded-lg p-1">
                             <button
-                              onClick={() => handleUpdateCartQuantity(item.posItemId, item.quantity - 1)}
+                              onClick={() => handleUpdateCartQuantity(cartKey, item.quantity - 1)}
                               className="p-1 hover:bg-border rounded transition-colors"
                               aria-label="کاهش تعداد"
                             >
@@ -846,7 +1331,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                             </button>
                             <span className="w-10 text-center font-bold text-lg">{item.quantity}</span>
                             <button
-                              onClick={() => handleUpdateCartQuantity(item.posItemId, item.quantity + 1)}
+                              onClick={() => handleUpdateCartQuantity(cartKey, item.quantity + 1)}
                               className="p-1 hover:bg-border rounded transition-colors"
                               aria-label="افزایش تعداد"
                             >
@@ -932,41 +1417,294 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       </main>
       {/* Customization Modal */}
       {modalItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md bg-background rounded-lg p-4 border border-border">
-            <h3 className="font-bold text-lg mb-2">سفارشی‌سازی: {modalItem.name}</h3>
-            <div className="space-y-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md bg-background rounded-lg p-6 border border-border shadow-xl animate-fade-in-down">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-xl text-primary">سفارشی‌سازی: {modalItem.name}</h3>
+              <button
+                onClick={closeModal}
+                className="text-secondary hover:text-primary text-2xl leading-none"
+                aria-label="بستن"
+              >
+                ×
+              </button>
+            </div>
+            <div className="space-y-4">
               {modalItem.variants && modalItem.variants.length > 0 && (
                 <div>
-                  <label className="text-sm text-secondary block mb-1">ورژن</label>
-                  <select value={modalVariantId} onChange={e => setModalVariantId(e.target.value)} className="w-full px-2 py-1 bg-surface border border-border rounded">
-                    {modalItem.variants.map(v => (<option key={v.id} value={v.id}>{v.name} {v.priceModifier !== 0 ? `(${v.priceModifier > 0 ? '+' : ''}${v.priceModifier})` : ''}</option>))}
-                  </select>
-                </div>
-              )}
-
-              {modalItem.customizations && modalItem.customizations.length > 0 && (
-                <div>
-                  <label className="text-sm text-secondary block mb-1">سفارشی‌سازی‌ها</label>
-                  <div className="space-y-2">
-                    {modalItem.customizations.map(c => (
-                      <div key={c.name} className="flex items-center gap-2">
-                        <label className="flex-1 text-sm">{c.name} ({(c.priceModifier ?? 0) > 0 ? `+${c.priceModifier ?? 0}` : (c.priceModifier ?? 0)})</label>
-                        <input type="number" value={String(modalCustomizations[c.name] || 0)} onChange={e => setModalCustomizations(prev => ({ ...prev, [c.name]: parseFloat(e.target.value) || 0 }))} className="w-24 px-2 py-1 bg-surface border border-border rounded" />
-                      </div>
+                  <label className="text-sm font-medium text-primary block mb-2">انتخاب ورژن</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => {
+                        setModalVariantId(undefined);
+                        // Reset customizations when variant changes
+                        setModalCustomizations({});
+                      }}
+                      className={`px-4 py-2 rounded-lg border-2 transition-colors text-sm ${
+                        !modalVariantId
+                          ? 'bg-accent text-accent-text border-accent'
+                          : 'bg-surface text-primary border-border hover:bg-border'
+                      }`}
+                    >
+                      پایه
+                    </button>
+                    {modalItem.variants.map(v => (
+                      <button
+                        key={v.id}
+                        onClick={() => {
+                          setModalVariantId(v.id);
+                          // Reset customizations when variant changes
+                          setModalCustomizations({});
+                        }}
+                        className={`px-4 py-2 rounded-lg border-2 transition-colors text-sm ${
+                          modalVariantId === v.id
+                            ? 'bg-accent text-accent-text border-accent'
+                            : 'bg-surface text-primary border-border hover:bg-border'
+                        }`}
+                      >
+                        {v.name}
+                        {v.priceModifier !== 0 && (
+                          <span className="text-xs block mt-1">
+                            {v.priceModifier > 0 ? '+' : ''}{v.priceModifier.toLocaleString()} ریال
+                          </span>
+                        )}
+                      </button>
                     ))}
                   </div>
                 </div>
               )}
 
-              <div className="flex items-center gap-2">
-                <label className="text-sm">تعداد</label>
-                <input type="number" value={modalQty} onChange={e => setModalQty(parseInt(e.target.value, 10) || 1)} className="w-20 px-2 py-1 bg-surface border border-border rounded" />
+              {/* Variant-specific customizations */}
+              {modalVariantId && modalItem.variants && (() => {
+                const selectedVariant = modalItem.variants.find(v => v.id === modalVariantId);
+                return selectedVariant?.customizations && selectedVariant.customizations.length > 0 ? (
+                  <div className="space-y-4 pt-2 border-t border-border">
+                    <label className="text-sm font-medium text-primary block">سفارشی‌سازی‌های {selectedVariant.name}</label>
+                    {selectedVariant.customizations.map(c => (
+                      <div key={c.id || c.name} className="space-y-2">
+                        <label className="text-sm font-medium text-primary block">{c.name}</label>
+
+                        {c.type === 'select' && c.options && c.options.length > 0 ? (
+                          <div className="grid grid-cols-2 gap-2">
+                            {c.options.map(opt => (
+                              <button
+                                key={opt.id}
+                                onClick={() => {
+                                  const currentValue = modalCustomizations[c.name];
+                                  if (opt.isCustomAmount) {
+                                    // For custom amount options, show input
+                                    const amount = typeof currentValue === 'object' && currentValue !== null && 'amount' in currentValue
+                                      ? (currentValue as { amount: number }).amount
+                                      : 0;
+                                    const newAmount = prompt(`مقدار ${opt.unit || ''} را وارد کنید:`, String(amount));
+                                    if (newAmount !== null) {
+                                      const numAmount = parseFloat(newAmount) || 0;
+                                      setModalCustomizations(prev => ({
+                                        ...prev,
+                                        [c.name]: { optionId: opt.id, amount: numAmount }
+                                      }));
+                                    }
+                                  } else {
+                                    setModalCustomizations(prev => ({
+                                      ...prev,
+                                      [c.name]: opt.id
+                                    }));
+                                  }
+                                }}
+                                className={`px-3 py-2 rounded-lg border-2 transition-colors text-sm ${
+                                  (() => {
+                                    const val = modalCustomizations[c.name];
+                                    if (typeof val === 'string' && val === opt.id) return true;
+                                    if (typeof val === 'object' && val !== null && 'optionId' in val) {
+                                      return (val as { optionId: string }).optionId === opt.id;
+                                    }
+                                    return false;
+                                  })()
+                                    ? 'bg-accent text-accent-text border-accent'
+                                    : 'bg-surface text-primary border-border hover:bg-border'
+                                }`}
+                              >
+                                {opt.label}
+                                {opt.price !== 0 && (
+                                  <span className="text-xs block mt-1">
+                                    {opt.price > 0 ? '+' : ''}{opt.price.toLocaleString()} ریال
+                                    {opt.isCustomAmount && opt.pricePerUnit && (
+                                      <span> ({opt.pricePerUnit.toLocaleString()} ریال/{opt.unit})</span>
+                                    )}
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        ) : c.type === 'number' ? (
+                          <input
+                            type="number"
+                            value={String(modalCustomizations[c.name] || 0)}
+                            onChange={e => setModalCustomizations(prev => ({ ...prev, [c.name]: parseFloat(e.target.value) || 0 }))}
+                            className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            value={String(modalCustomizations[c.name] || '')}
+                            onChange={e => setModalCustomizations(prev => ({ ...prev, [c.name]: e.target.value }))}
+                            className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : null;
+              })()}
+
+              {/* Global customizations */}
+              {modalItem.customizations && modalItem.customizations.length > 0 && (
+                <div className="space-y-4 pt-2 border-t border-border">
+                  <label className="text-sm font-medium text-primary block">سفارشی‌سازی‌های عمومی</label>
+                  {modalItem.customizations.map(c => (
+                    <div key={c.id || c.name} className="space-y-2">
+                      <label className="text-sm font-medium text-primary block">{c.name}</label>
+
+                      {c.type === 'select' && c.options && c.options.length > 0 ? (
+                        <div className="space-y-2">
+                          {c.options.map(opt => {
+                            const isSelected = modalCustomizations[c.name] === opt.id ||
+                              (typeof modalCustomizations[c.name] === 'object' && (modalCustomizations[c.name] as any).optionId === opt.id);
+
+                            return (
+                              <div key={opt.id} className="space-y-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (opt.isCustomAmount) {
+                                      // For custom amount, store option ID and allow amount input
+                                      setModalCustomizations(prev => ({
+                                        ...prev,
+                                        [c.name]: { optionId: opt.id, amount: (prev[c.name] as any)?.amount || 0 }
+                                      }));
+                                    } else {
+                                      // Regular option, just store the option ID
+                                      setModalCustomizations(prev => ({ ...prev, [c.name]: opt.id }));
+                                    }
+                                  }}
+                                  className={`w-full px-3 py-2 rounded-lg border-2 transition-colors text-sm text-right ${
+                                    isSelected
+                                      ? 'bg-accent text-accent-text border-accent'
+                                      : 'bg-surface text-primary border-border hover:bg-border'
+                                  }`}
+                                >
+                                  <div className="flex justify-between items-center">
+                                    <span>{opt.label}</span>
+                                    {opt.price !== 0 && (
+                                      <span className="text-xs">
+                                        {opt.price > 0 ? '+' : ''}{opt.price.toLocaleString()} ریال
+                                      </span>
+                                    )}
+                                  </div>
+                                </button>
+
+                                {opt.isCustomAmount && isSelected && (() => {
+                                  const customValue = modalCustomizations[c.name];
+                                  const amount = typeof customValue === 'object' && customValue !== null && 'amount' in customValue
+                                    ? (customValue as { amount: number }).amount
+                                    : 0;
+                                  return (
+                                    <div className="flex gap-2 items-center mt-1 pr-2">
+                                      <input
+                                        type="number"
+                                        value={String(amount)}
+                                        onChange={e => setModalCustomizations(prev => ({
+                                          ...prev,
+                                          [c.name]: {
+                                            optionId: opt.id,
+                                            amount: parseFloat(e.target.value) || 0
+                                          }
+                                        }))}
+                                        className="flex-1 px-2 py-1 bg-surface border border-border rounded text-sm"
+                                        placeholder={`مقدار (${opt.unit || 'واحد'})`}
+                                        min="0"
+                                      />
+                                      {opt.pricePerUnit && (
+                                        <span className="text-xs text-secondary">
+                                          {(opt.pricePerUnit * amount).toLocaleString()} ریال
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : c.type === 'number' ? (
+                        <input
+                          type="number"
+                          value={String(modalCustomizations[c.name] || 0)}
+                          onChange={e => setModalCustomizations(prev => ({ ...prev, [c.name]: parseFloat(e.target.value) || 0 }))}
+                          className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                          placeholder="عدد"
+                        />
+                      ) : c.type === 'text' ? (
+                        <input
+                          type="text"
+                          value={String(modalCustomizations[c.name] || '')}
+                          onChange={e => setModalCustomizations(prev => ({ ...prev, [c.name]: e.target.value }))}
+                          className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                          placeholder="متن"
+                        />
+                      ) : (
+                        // Legacy: fallback to number input with priceModifier
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={String(modalCustomizations[c.name] || 0)}
+                            onChange={e => setModalCustomizations(prev => ({ ...prev, [c.name]: parseFloat(e.target.value) || 0 }))}
+                            className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                          />
+                          {c.priceModifier && c.priceModifier !== 0 && (
+                            <span className="text-xs text-secondary">
+                              {(c.priceModifier * (Number(modalCustomizations[c.name]) || 0)).toLocaleString()} ریال
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-4 pt-2 border-t border-border">
+                <label className="text-sm font-medium text-primary">تعداد</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setModalQty(Math.max(1, modalQty - 1))}
+                    className="w-8 h-8 flex items-center justify-center bg-surface border border-border rounded hover:bg-border transition-colors"
+                  >
+                    <MinusIcon />
+                  </button>
+                  <input
+                    type="number"
+                    value={modalQty}
+                    onChange={e => setModalQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className="w-16 px-2 py-1 text-center bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                    min="1"
+                  />
+                  <button
+                    onClick={() => setModalQty(modalQty + 1)}
+                    className="w-8 h-8 flex items-center justify-center bg-surface border border-border rounded hover:bg-border transition-colors"
+                  >
+                    <PlusIcon />
+                  </button>
+                </div>
               </div>
 
-              <div className="flex justify-end gap-2 mt-3">
-                <button onClick={closeModal} className="px-3 py-2 bg-surface border border-border rounded">انصراف</button>
-                <button onClick={confirmModalAdd} className="px-3 py-2 bg-accent text-accent-text rounded">افزودن به سبد</button>
+              <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-border">
+                <Button variant="secondary" onClick={closeModal}>
+                  انصراف
+                </Button>
+                <Button variant="primary" onClick={confirmModalAdd}>
+                  افزودن به سبد
+                </Button>
               </div>
             </div>
           </div>
