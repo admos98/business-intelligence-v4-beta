@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { POSItem, SellTransaction, SellTransactionItem, PaymentMethod, Unit } from '../../shared/types';
 import Header from '../components/common/Header';
 import { useShoppingStore } from '../store/useShoppingStore';
@@ -44,6 +44,11 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const { addToast } = useToast();
   const { setActions } = usePageActions();
 
+  // Refs for form elements to avoid direct DOM manipulation
+  const itemFormRef = useRef<HTMLDivElement>(null);
+  const newVariantNameRef = useRef<HTMLInputElement>(null);
+  const newVariantPriceRef = useRef<HTMLInputElement>(null);
+
   // Get POS categories - use separate POS categories from store
   const posCategories = useMemo(() => {
     const cats = new Set<string>();
@@ -69,7 +74,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   }, [selectedCategory, getPOSItemsByCategory, posItems, itemSearch]);
   const frequentItems = getFrequentPOSItems(12);
 
-  const cartArray = Array.from(cart.values());
+  // Convert cart Map to array with keys for stable React keys
+  const cartArray = useMemo(() => Array.from(cart.entries()).map(([key, value]) => ({ key, ...value })), [cart]);
   const cartTotal = cartArray.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
   const finalTotal = Math.max(0, cartTotal - discountAmount);
 
@@ -482,12 +488,9 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       priceModifier: c.priceModifier || 0
     })) || []);
     setShowNewItemForm(true);
-    // Scroll to form
+    // Scroll to form using ref
     setTimeout(() => {
-      const formElement = document.querySelector('[data-item-form]');
-      if (formElement) {
-        formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      itemFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
   };
 
@@ -550,7 +553,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     addToast('کالا حذف شد', 'success');
   };
 
-  const handlePrintCart = () => {
+  const handlePrintCart = useCallback(() => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       addToast('دسترسی به چاپ رد شد', 'error');
@@ -607,9 +610,9 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     printWindow.document.write(html);
     printWindow.document.close();
     printWindow.print();
-  };
+  }, [cartArray, finalTotal, discountAmount, addToast]);
 
-  const handleExportTransactionsJson = () => {
+  const handleExportTransactionsJson = useCallback(() => {
     const transactions = store.sellTransactions || [];
     const dataString = JSON.stringify(transactions, null, 2);
     const blob = new Blob([dataString], { type: 'application/json' });
@@ -620,9 +623,9 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     a.click();
     URL.revokeObjectURL(url);
     addToast('فروش‌ها با موفقیت صادر شدند', 'success');
-  };
+  }, [store.sellTransactions, addToast]);
 
-  const handleExportTransactionsCsv = () => {
+  const handleExportTransactionsCsv = useCallback(() => {
     const transactions = store.sellTransactions || [];
     if (transactions.length === 0) {
       addToast('فروش برای صادر کردن وجود ندارد', 'info');
@@ -642,7 +645,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     a.click();
     URL.revokeObjectURL(url);
     addToast('CSV فروش‌ها صادر شد', 'success');
-  };
+  }, [store.sellTransactions, addToast]);
 
   // Register page actions with Navbar
   useEffect(() => {
@@ -664,8 +667,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     );
     setActions(actions);
     return () => {
-      // Use setTimeout to ensure cleanup happens after render
-      setTimeout(() => setActions(null), 0);
+      // Cleanup: set actions to null synchronously to avoid DOM manipulation errors
+      setActions(null);
     };
   }, [setActions, handleExportTransactionsCsv, handleExportTransactionsJson, handlePrintCart, onViewSellAnalysis]);
 
@@ -853,7 +856,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
 
             {/* New/Edit Item Form */}
             {showNewItemForm && (
-              <Card title={editingItem ? "ویرایش کالا" : "افزودن کالای جدید"} className="animate-fade-in" data-item-form>
+              <div ref={itemFormRef}>
+                <Card title={editingItem ? "ویرایش کالا" : "افزودن کالای جدید"} className="animate-fade-in">
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -1232,12 +1236,12 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                       ))}
                       <div className="flex gap-2 mt-2">
                         <input
-                          id="new-variant-name"
+                          ref={newVariantNameRef}
                           placeholder="نام ورژن (مثال: قهوه، دوروپ)"
                           className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
                         />
                         <input
-                          id="new-variant-price"
+                          ref={newVariantPriceRef}
                           type="number"
                           placeholder="تغییر قیمت (مثال: +5000 یا -2000)"
                           className="w-40 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
@@ -1246,18 +1250,16 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                           variant="primary"
                           size="sm"
                           onClick={() => {
-                            const nEl = document.getElementById('new-variant-name') as HTMLInputElement | null;
-                            const pEl = document.getElementById('new-variant-price') as HTMLInputElement | null;
-                            if (!nEl) return;
-                            const name = nEl.value.trim();
-                            const price = pEl ? parseFloat(pEl.value) || 0 : 0;
+                            if (!newVariantNameRef.current) return;
+                            const name = newVariantNameRef.current.value.trim();
+                            const price = newVariantPriceRef.current ? parseFloat(newVariantPriceRef.current.value) || 0 : 0;
                             if (!name) {
                               addToast('لطفاً نام ورژن را وارد کنید', 'error');
                               return;
                             }
                             setNewItemVariants(prev => [...prev, { id: `var-${Date.now()}-${Math.random()}`, name, priceModifier: price, customizations: [] }]);
-                            nEl.value = '';
-                            if (pEl) pEl.value = '';
+                            newVariantNameRef.current.value = '';
+                            if (newVariantPriceRef.current) newVariantPriceRef.current.value = '';
                             addToast(`ورژن "${name}" اضافه شد`, 'success');
                           }}
                         >
@@ -1289,6 +1291,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                   </div>
                 </div>
               </Card>
+              </div>
             )}
           </div>
 
@@ -1299,11 +1302,9 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                 {cartArray.length === 0 ? (
                   <p className="text-center text-secondary py-8">سبد خرید خالی است</p>
                 ) : (
-                  cartArray.map((item, idx) => {
-                    const cartKey = Array.from(cart.keys())[idx];
-                    return (
+                  cartArray.map((item, idx) => (
                       <div
-                        key={cartKey}
+                        key={item.key}
                         className="bg-surface p-3 rounded-lg border border-border hover-lift animate-fade-in transition-all"
                         style={{ animationDelay: `${idx * 30}ms` }}
                       >
@@ -1313,7 +1314,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                             <CurrencyDisplay value={item.unitPrice} className="text-xs text-secondary" />
                           </div>
                           <button
-                            onClick={() => handleRemoveFromCart(cartKey)}
+                            onClick={() => handleRemoveFromCart(item.key)}
                             className="text-danger hover:text-danger/80 transition-colors p-1 hover:bg-danger/10 rounded"
                             aria-label="حذف از سبد"
                           >
@@ -1323,7 +1324,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 bg-background rounded-lg p-1">
                             <button
-                              onClick={() => handleUpdateCartQuantity(cartKey, item.quantity - 1)}
+                              onClick={() => handleUpdateCartQuantity(item.key, item.quantity - 1)}
                               className="p-1 hover:bg-border rounded transition-colors"
                               aria-label="کاهش تعداد"
                             >
@@ -1331,7 +1332,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                             </button>
                             <span className="w-10 text-center font-bold text-lg">{item.quantity}</span>
                             <button
-                              onClick={() => handleUpdateCartQuantity(cartKey, item.quantity + 1)}
+                              onClick={() => handleUpdateCartQuantity(item.key, item.quantity + 1)}
                               className="p-1 hover:bg-border rounded transition-colors"
                               aria-label="افزایش تعداد"
                             >
@@ -1341,8 +1342,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                           <CurrencyDisplay value={item.quantity * item.unitPrice} className="font-bold text-primary" />
                         </div>
                       </div>
-                    );
-                  })
+                    ))
                 )}
               </div>
 
