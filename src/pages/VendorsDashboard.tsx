@@ -107,7 +107,7 @@ const VendorsDashboard: React.FC<VendorsDashboardProps> = ({ onBack }) => {
     );
     setActions(actions);
     return () => {
-      setTimeout(() => setActions(null), 0);
+      setActions(null);
     };
   }, [setActions, handleExportCsv, handleExportJson, vendors.length]);
 

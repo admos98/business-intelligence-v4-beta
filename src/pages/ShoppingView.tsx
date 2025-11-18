@@ -359,7 +359,7 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
     );
     setActions(actions);
     return () => {
-      setTimeout(() => setActions(null), 0);
+      setActions(null);
     };
   }, [setActions, handleExportCsv, handleExportJson, handleDownloadDailyReport, isPdfLoading]);
 

@@ -12,6 +12,8 @@ import CurrencyDisplay from '../components/common/CurrencyDisplay.tsx';
 import { useToast } from '../components/common/Toast.tsx';
 // FIX: Replace declare with import for Chart.js
 import { Chart } from 'chart.js/auto';
+import { usePageActions } from '../contexts/PageActionsContext';
+import Button from '../components/common/Button';
 
 
 type Period = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
@@ -356,7 +358,7 @@ useEffect(() => {
     );
     setActions(actions);
     return () => {
-      setTimeout(() => setActions(null), 0);
+      setActions(null);
     };
   }, [setActions, handleExportJson, summaryData]);
 

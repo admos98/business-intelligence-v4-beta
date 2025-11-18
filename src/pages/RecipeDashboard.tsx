@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Recipe, RecipeIngredient, Unit } from '../../shared/types';
 import Header from '../components/common/Header';
 import { useShoppingStore } from '../store/useShoppingStore';
@@ -6,6 +6,8 @@ import { useShoppingStore } from '../store/useShoppingStore';
 import { useToast } from '../components/common/Toast';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import Card from '../components/common/Card';
+import { usePageActions } from '../contexts/PageActionsContext';
+import Button from '../components/common/Button';
 
 interface RecipeDashboardProps {}
 
@@ -214,7 +216,7 @@ const RecipeDashboard: React.FC<RecipeDashboardProps> = () => {
     );
     setActions(actions);
     return () => {
-      setTimeout(() => setActions(null), 0);
+      setActions(null);
     };
   }, [setActions, handleExportRecipesCsv, handleExportRecipesJson, handlePrintRecipes]);
 

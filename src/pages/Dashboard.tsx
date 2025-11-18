@@ -201,7 +201,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
     );
     setActions(actions);
     return () => {
-      setTimeout(() => setActions(null), 0);
+      setActions(null);
     };
   }, [setActions, onViewSummary, onViewAnalysis, onViewVendors, onViewItems, setIsReportsModalOpen]);
 

@@ -76,7 +76,7 @@ const SellAnalysisDashboard: React.FC<SellAnalysisDashboardProps> = () => {
     );
     setActions(actions);
     return () => {
-      setTimeout(() => setActions(null), 0);
+      setActions(null);
     };
   }, [setActions, handleExportAnalysisCsv, handleExportAnalysisJson]);
 

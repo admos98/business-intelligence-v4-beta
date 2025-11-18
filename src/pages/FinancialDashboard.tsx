@@ -81,7 +81,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
     );
     setActions(actions);
     return () => {
-      setTimeout(() => setActions(null), 0);
+      setActions(null);
     };
   }, [setActions, handleExportFinancialCsv, handleExportFinancialJson]);
 
