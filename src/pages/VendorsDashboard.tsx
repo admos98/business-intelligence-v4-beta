@@ -92,7 +92,7 @@ const VendorsDashboard: React.FC<VendorsDashboardProps> = ({ onBack, onLogout })
 
   return (
     <>
-      <Header title={t.vendorsDashboardTitle} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout}>
+      <Header title={t.vendorsDashboardTitle} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout} hideMenu={true}>
         <button
           onClick={handleExportCsv}
           disabled={vendors.length === 0}

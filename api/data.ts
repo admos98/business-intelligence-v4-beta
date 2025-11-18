@@ -11,6 +11,7 @@ interface StoredData {
     categoryVendorMap: unknown;
     itemInfoMap: unknown;
     posItems?: unknown;
+    posCategories?: unknown;
     sellTransactions?: unknown;
     recipes?: unknown;
     stockEntries?: unknown;
@@ -102,6 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     categoryVendorMap: {},
                     itemInfoMap: {},
                     posItems: [],
+                    posCategories: [],
                     sellTransactions: [],
                     recipes: [],
                     stockEntries: {},

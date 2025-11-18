@@ -69,7 +69,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onLogout }) => 
 
   return (
     <>
-      <Header title="تقرير مالی و حسابداری" onLogout={onLogout}>
+      <Header title="تقرير مالی و حسابداری" onLogout={onLogout} hideMenu={true}>
         <button onClick={handleExportFinancialCsv} className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border">
           صادر کردن CSV
         </button>

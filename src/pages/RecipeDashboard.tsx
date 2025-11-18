@@ -199,7 +199,7 @@ const RecipeDashboard: React.FC<RecipeDashboardProps> = ({ onLogout }) => {
 
   return (
     <>
-      <Header title="مدیریت دستور پخت‌ها" onLogout={onLogout}>
+      <Header title="مدیریت دستور پخت‌ها" onLogout={onLogout} hideMenu={true}>
         <button onClick={handleExportRecipesCsv} className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border">
           صادر کردن CSV
         </button>

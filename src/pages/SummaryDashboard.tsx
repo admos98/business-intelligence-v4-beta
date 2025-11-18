@@ -50,16 +50,23 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack, onLogout,})
   useEffect(() => {
     setIsUpdating(true);
     const timer = setTimeout(() => {
-        const data = getSummaryData(period);
-        setSummaryData(data);
-        if (isInitialLoading) {
+        try {
+            const data = getSummaryData(period);
+            setSummaryData(data);
+            if (isInitialLoading) {
+                setIsInitialLoading(false);
+            }
+        } catch (error) {
+            console.error('Error loading summary data:', error);
+            setSummaryData(null);
             setIsInitialLoading(false);
+        } finally {
+            setIsUpdating(false);
         }
-        setIsUpdating(false);
     }, 100); // Small delay to allow UI to show loading state
 
     return () => clearTimeout(timer);
-  }, [period, getSummaryData]);
+  }, [period, getSummaryData, isInitialLoading]);
 
 // src/pages/SummaryDashboard.tsx
 
@@ -207,62 +214,82 @@ useEffect(() => {
 
   useEffect(() => {
     if (spendingTimeChartInstance.current) spendingTimeChartInstance.current.destroy();
-    if (spendingTimeChartRef.current && summaryData?.charts.spendingOverTime) {
-      const styles = getComputedStyle(document.documentElement);
-      const accentColor = styles.getPropertyValue('--color-accent').trim();
-      const accentSoftColor = styles.getPropertyValue('--color-accent-soft').trim();
+    if (spendingTimeChartRef.current && summaryData?.charts?.spendingOverTime) {
+      try {
+        const styles = getComputedStyle(document.documentElement);
+        const accentColor = styles.getPropertyValue('--color-accent').trim();
+        const accentSoftColor = styles.getPropertyValue('--color-accent-soft').trim();
 
-      const ctx = spendingTimeChartRef.current.getContext('2d');
-      if (ctx) {
-        spendingTimeChartInstance.current = new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: summaryData.charts.spendingOverTime.labels,
-            datasets: [{
-              label: t.totalSpend,
-              data: summaryData.charts.spendingOverTime.data,
-              borderColor: accentColor,
-              backgroundColor: accentSoftColor,
-              fill: true,
-              tension: 0.3,
-            }],
-          },
-          options: lineChartOptions,
-        });
+        const ctx = spendingTimeChartRef.current.getContext('2d');
+        if (ctx && summaryData.charts.spendingOverTime.labels && summaryData.charts.spendingOverTime.data) {
+          spendingTimeChartInstance.current = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: summaryData.charts.spendingOverTime.labels,
+              datasets: [{
+                label: t.totalSpend,
+                data: summaryData.charts.spendingOverTime.data,
+                borderColor: accentColor,
+                backgroundColor: accentSoftColor,
+                fill: true,
+                tension: 0.3,
+              }],
+            },
+            options: lineChartOptions,
+          });
+        }
+      } catch (error) {
+        console.error('Error rendering spending time chart:', error);
       }
     }
-  }, [summaryData, lineChartOptions]);
+    return () => {
+      if (spendingTimeChartInstance.current) {
+        spendingTimeChartInstance.current.destroy();
+        spendingTimeChartInstance.current = null;
+      }
+    };
+  }, [summaryData, lineChartOptions, t.totalSpend]);
 
   useEffect(() => {
     if (spendingCategoryChartInstance.current) spendingCategoryChartInstance.current.destroy();
-    if (spendingCategoryChartRef.current && summaryData?.charts.spendingByCategory) {
-      const styles = getComputedStyle(document.documentElement);
-      const palette = [
-        styles.getPropertyValue('--color-chart-1').trim(),
-        styles.getPropertyValue('--color-chart-2').trim(),
-        styles.getPropertyValue('--color-chart-3').trim(),
-        styles.getPropertyValue('--color-chart-4').trim(),
-        styles.getPropertyValue('--color-chart-5').trim(),
-      ];
+    if (spendingCategoryChartRef.current && summaryData?.charts?.spendingByCategory) {
+      try {
+        const styles = getComputedStyle(document.documentElement);
+        const palette = [
+          styles.getPropertyValue('--color-chart-1').trim(),
+          styles.getPropertyValue('--color-chart-2').trim(),
+          styles.getPropertyValue('--color-chart-3').trim(),
+          styles.getPropertyValue('--color-chart-4').trim(),
+          styles.getPropertyValue('--color-chart-5').trim(),
+        ];
 
-      const ctx = spendingCategoryChartRef.current.getContext('2d');
-      if (ctx) {
-        spendingCategoryChartInstance.current = new Chart(ctx, {
-          type: 'doughnut',
-          data: {
-            labels: summaryData.charts.spendingByCategory.labels,
-            datasets: [{
-              label: t.totalSpend,
-              data: summaryData.charts.spendingByCategory.data,
-              backgroundColor: palette,
-              borderWidth: 0,
-            }],
-          },
-          options: doughnutChartOptions,
-        });
+        const ctx = spendingCategoryChartRef.current.getContext('2d');
+        if (ctx && summaryData.charts.spendingByCategory.labels && summaryData.charts.spendingByCategory.data) {
+          spendingCategoryChartInstance.current = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+              labels: summaryData.charts.spendingByCategory.labels,
+              datasets: [{
+                label: t.totalSpend,
+                data: summaryData.charts.spendingByCategory.data,
+                backgroundColor: palette,
+                borderWidth: 0,
+              }],
+            },
+            options: doughnutChartOptions,
+          });
+        }
+      } catch (error) {
+        console.error('Error rendering spending category chart:', error);
       }
     }
-  }, [summaryData, doughnutChartOptions]);
+    return () => {
+      if (spendingCategoryChartInstance.current) {
+        spendingCategoryChartInstance.current.destroy();
+        spendingCategoryChartInstance.current = null;
+      }
+    };
+  }, [summaryData, doughnutChartOptions, t.totalSpend]);
 
   const PeriodButton: React.FC<{ value: Period, label: string }> = ({ value, label }) => (
     <button
@@ -319,7 +346,7 @@ useEffect(() => {
 
   return (
     <>
-      <Header title={t.executiveSummary} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout}>
+      <Header title={t.executiveSummary} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout} hideMenu={true}>
         <button
           onClick={handleExportJson}
           disabled={!summaryData}

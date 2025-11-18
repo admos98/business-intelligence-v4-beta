@@ -76,7 +76,7 @@ const InsightsHub: React.FC<InsightsHubProps> = ({ onBack, onLogout}) => {
 
     return (
         <div className="flex flex-col h-screen">
-            <Header title={t.insightsHub || "Insights Hub"} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout} />
+            <Header title={t.insightsHub || "Insights Hub"} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout} hideMenu={true} />
             <main className="flex-grow p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full">
                 <div className="mb-6 border-b border-border flex items-center justify-center">
                     <TabButton id="inflation" label={t.inflationTracker || "Inflation"} activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -162,22 +162,32 @@ const InflationTracker: React.FC = () => {
     useEffect(() => {
         if (chartInstance.current) chartInstance.current.destroy();
         if (chartRef.current && inflationData?.priceIndexHistory) {
-            const styles = getComputedStyle(document.documentElement);
-            const accentColor = styles.getPropertyValue('--color-accent').trim();
-            const accentSoftColor = styles.getPropertyValue('--color-accent-soft').trim();
+            try {
+                const styles = getComputedStyle(document.documentElement);
+                const accentColor = styles.getPropertyValue('--color-accent').trim();
+                const accentSoftColor = styles.getPropertyValue('--color-accent-soft').trim();
 
-            const ctx = chartRef.current.getContext('2d');
-            if (ctx) {
-                chartInstance.current = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: inflationData.priceIndexHistory.map((p) => p.period),
-                        datasets: [{ data: inflationData.priceIndexHistory.map((p) => p.priceIndex), borderColor: accentColor, backgroundColor: accentSoftColor, fill: true, tension: 0.3 }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-                });
+                const ctx = chartRef.current.getContext('2d');
+                if (ctx && inflationData.priceIndexHistory.length > 0) {
+                    chartInstance.current = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: inflationData.priceIndexHistory.map((p) => p.period),
+                            datasets: [{ data: inflationData.priceIndexHistory.map((p) => p.priceIndex), borderColor: accentColor, backgroundColor: accentSoftColor, fill: true, tension: 0.3 }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                    });
+                }
+            } catch (error) {
+                console.error('Error rendering inflation chart:', error);
             }
         }
+        return () => {
+            if (chartInstance.current) {
+                chartInstance.current.destroy();
+                chartInstance.current = null;
+            }
+        };
     }, [inflationData]);
 
     if (isLoading) return <div className="text-center py-8"><p>{t.generatingInflationData || "Loading..."}</p></div>;
@@ -391,17 +401,26 @@ const CustomReports: React.FC = () => {
 
   useEffect(() => {
     if (chartInstance.current) chartInstance.current.destroy();
-    if (chartRef.current && processedData?.chartData.labels.length) {
-        let chartType: 'line' | 'bar' | 'pie' = config.groupBy === 'date' ? 'line' : 'bar';
-        if (['category', 'vendor', 'item'].includes(config.groupBy) && config.metrics.length === 1 && config.metrics[0] === 'totalSpend') chartType = 'pie';
+    if (chartRef.current && processedData?.chartData?.labels && processedData.chartData.labels.length > 0) {
+        try {
+            let chartType: 'line' | 'bar' | 'pie' = config.groupBy === 'date' ? 'line' : 'bar';
+            if (['category', 'vendor', 'item'].includes(config.groupBy) && config.metrics.length === 1 && config.metrics[0] === 'totalSpend') chartType = 'pie';
 
-        const ctx = chartRef.current.getContext('2d');
-        if (ctx) {
-          chartInstance.current = new Chart(ctx, { type: chartType, data: processedData.chartData, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } } });
+            const ctx = chartRef.current.getContext('2d');
+            if (ctx && processedData.chartData.datasets) {
+              chartInstance.current = new Chart(ctx, { type: chartType, data: processedData.chartData, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } } });
+            }
+        } catch (error) {
+            console.error('Error rendering custom report chart:', error);
         }
     }
-     return () => { if(chartInstance.current) chartInstance.current.destroy(); };
-  }, [processedData]);
+     return () => {
+         if(chartInstance.current) {
+             chartInstance.current.destroy();
+             chartInstance.current = null;
+         }
+     };
+  }, [processedData, config.groupBy, config.metrics]);
 
   return (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

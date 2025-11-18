@@ -11,6 +11,7 @@ interface HeaderProps {
   backText?: string;
   children?: React.ReactNode;
   onLogout?: () => void;
+  hideMenu?: boolean; // Hide menu button when navigation is handled by Navbar
 }
 
 const MenuIcon = () => (
@@ -19,7 +20,7 @@ const MenuIcon = () => (
     </svg>
 );
 
-const Header: React.FC<HeaderProps> = ({ title, onBack, backText, children, onLogout }) => {
+const Header: React.FC<HeaderProps> = ({ title, onBack, backText, children, onLogout, hideMenu = false }) => {
   const [theme, toggleTheme] = useTheme();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -78,7 +79,7 @@ const Header: React.FC<HeaderProps> = ({ title, onBack, backText, children, onLo
 
             <ThemeToggleButton theme={theme} toggleTheme={toggleTheme} />
 
-            {(React.Children.count(children) > 0 || onLogout || onBack) && (
+            {!hideMenu && (React.Children.count(children) > 0 || onLogout || onBack) && (
                 <div className="sm:hidden">
                     <button
                         onClick={() => setIsMenuOpen(prev => !prev)}
@@ -93,7 +94,7 @@ const Header: React.FC<HeaderProps> = ({ title, onBack, backText, children, onLo
 
         </div>
 
-        {isMenuOpen && (React.Children.count(children) > 0 || onLogout || onBack) && (
+        {!hideMenu && isMenuOpen && (React.Children.count(children) > 0 || onLogout || onBack) && (
             <div ref={menuRef} className="sm:hidden absolute top-full right-4 mt-2 w-56 bg-surface rounded-md shadow-lg border border-border z-30 p-2 animate-fade-in-down">
                 <div className="flex flex-col gap-1">
                     {onBack && (

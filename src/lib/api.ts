@@ -7,6 +7,7 @@ interface StoredData {
     categoryVendorMap: Record<string, string>;
     itemInfoMap: Record<string, { unit: string; category: string }>;
     posItems?: POSItem[];
+    posCategories?: string[];
     sellTransactions?: SellTransaction[];
     recipes?: Recipe[];
     stockEntries?: Record<string, StockEntry>;

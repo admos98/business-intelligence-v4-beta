@@ -173,7 +173,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
 
   return (
     <>
-      <Header title={t.appTitle} onLogout={onLogout}>
+      <Header title={t.appTitle} onLogout={onLogout} hideMenu={true}>
          <button
             onClick={onViewSummary}
             className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border shadow-subtle"

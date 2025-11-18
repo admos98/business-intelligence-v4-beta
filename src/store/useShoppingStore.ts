@@ -18,12 +18,14 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
 
   // POS / SELL DATA
   posItems: POSItem[];
+  posCategories: string[]; // Separate POS categories (not buy categories)
   sellTransactions: SellTransaction[];
   recipes: Recipe[];
   stockEntries: Record<string, StockEntry>; // itemName-unit key -> StockEntry
 
   // Category actions
   addCategory: (name: string) => void;
+  addPOSCategory: (name: string) => void; // Add POS-specific category
 
   hydrateFromCloud: () => Promise<void>;
 
@@ -64,6 +66,7 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
 
   // SELL TRANSACTION ACTIONS
   addSellTransaction: (transaction: Omit<SellTransaction, 'id' | 'date'>) => string;
+  updateSellTransaction: (transactionId: string, updates: Partial<SellTransaction>) => void;
   getSellTransactions: (period: SummaryPeriod) => SellTransaction[];
   deleteSellTransaction: (transactionId: string) => void;
 
@@ -116,6 +119,7 @@ const emptyState = {
   categoryVendorMap: {},
   itemInfoMap: {},
   posItems: [],
+  posCategories: [], // Separate POS categories
   sellTransactions: [],
   recipes: [],
   stockEntries: {},
@@ -144,6 +148,7 @@ const debouncedSaveData = (state: FullShoppingState) => {
             categoryVendorMap: state.categoryVendorMap,
             itemInfoMap: state.itemInfoMap,
             posItems: state.posItems,
+            posCategories: state.posCategories,
             sellTransactions: state.sellTransactions,
             recipes: state.recipes,
             stockEntries: state.stockEntries,
@@ -197,6 +202,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                       categoryVendorMap: data.categoryVendorMap,
                       itemInfoMap: data.itemInfoMap && typeof data.itemInfoMap === 'object' ? (data.itemInfoMap as Record<string, { unit: Unit; category: string }>) : {},
                       posItems: data.posItems || [],
+                      posCategories: data.posCategories || [],
                       sellTransactions: data.sellTransactions || [],
                       recipes: data.recipes || [],
                       stockEntries: data.stockEntries || {},
@@ -387,6 +393,16 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         set(state => {
           if (state.customCategories.includes(trimmed)) return {} as Partial<FullShoppingState>;
           return { customCategories: [...state.customCategories, trimmed] } as Partial<FullShoppingState>;
+        });
+        debouncedSaveData(get());
+      },
+
+      addPOSCategory: (name: string) => {
+        const trimmed = name?.trim();
+        if (!trimmed) return;
+        set(state => {
+          if (state.posCategories.includes(trimmed)) return {} as Partial<FullShoppingState>;
+          return { posCategories: [...state.posCategories, trimmed] } as Partial<FullShoppingState>;
         });
         debouncedSaveData(get());
       },
@@ -1016,6 +1032,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                     categoryVendorMap: data.categoryVendorMap && typeof data.categoryVendorMap === 'object' ? data.categoryVendorMap : {},
                     itemInfoMap: data.itemInfoMap && typeof data.itemInfoMap === 'object' ? data.itemInfoMap : {},
                     posItems: Array.isArray(data.posItems) ? (data.posItems as POSItem[]) : [],
+                    posCategories: Array.isArray(data.posCategories) ? data.posCategories : [],
                     sellTransactions: Array.isArray(data.sellTransactions) ? (data.sellTransactions as SellTransaction[]) : [],
                     recipes: Array.isArray(data.recipes) ? (data.recipes as Recipe[]) : [],
                     stockEntries: data.stockEntries && typeof data.stockEntries === 'object' ? (data.stockEntries as Record<string, StockEntry>) : {},
@@ -1174,6 +1191,15 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           const transDate = new Date(trans.date);
           return transDate >= startDate && transDate <= endDate;
         });
+      },
+
+      updateSellTransaction: (transactionId, updates) => {
+        set(state => ({
+          sellTransactions: state.sellTransactions.map(trans =>
+            trans.id === transactionId ? { ...trans, ...updates } : trans
+          )
+        }));
+        debouncedSaveData(get());
       },
 
       deleteSellTransaction: (transactionId) => {

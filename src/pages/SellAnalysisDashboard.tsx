@@ -64,7 +64,7 @@ const SellAnalysisDashboard: React.FC<SellAnalysisDashboardProps> = ({ onLogout 
 
   return (
     <>
-      <Header title="تحلیل فروش و درآمد" onLogout={onLogout}>
+      <Header title="تحلیل فروش و درآمد" onLogout={onLogout} hideMenu={true}>
         <button onClick={handleExportAnalysisCsv} className="px-3 py-1.5 text-sm bg-surface text-primary font-medium rounded-lg hover:bg-border transition-colors border border-border">
           صادر کردن CSV
         </button>

@@ -112,37 +112,47 @@ const ItemTrendModal: React.FC<{ item: MasterItem, onClose: () => void }> = ({ i
   useEffect(() => {
     if (chartInstance.current) chartInstance.current.destroy();
     if (chartRef.current && history.length > 0) {
-      const styles = getComputedStyle(document.documentElement);
-      const accentColor = styles.getPropertyValue('--color-accent').trim();
-      const accentSoftColor = styles.getPropertyValue('--color-accent-soft').trim();
+      try {
+        const styles = getComputedStyle(document.documentElement);
+        const accentColor = styles.getPropertyValue('--color-accent').trim();
+        const accentSoftColor = styles.getPropertyValue('--color-accent-soft').trim();
 
-      const ctx = chartRef.current.getContext('2d');
-      if (ctx) {
-        chartInstance.current = new Chart(ctx, {
-            type: 'line',
-            data: {
-              labels: history.map(p => toJalaliDateString(p.date)),
-              datasets: [{
-                  label: t.pricePerUnitLabel,
-                  data: history.map(p => p.pricePerUnit),
-                  borderColor: accentColor,
-                  backgroundColor: accentSoftColor,
-                  fill: true,
-                  tension: 0.2,
-                  pointBackgroundColor: accentColor,
-                  pointRadius: history.length < 20 ? 4 : 0,
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: { x: { ticks: { font: { family: "'Vazirmatn', sans-serif" }}}, y: { ticks: { font: { family: "'Vazirmatn', sans-serif" }}} },
-              plugins: { legend: { display: false } }
-            }
-        });
+        const ctx = chartRef.current.getContext('2d');
+        if (ctx) {
+          chartInstance.current = new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: history.map(p => toJalaliDateString(p.date)),
+                datasets: [{
+                    label: t.pricePerUnitLabel,
+                    data: history.map(p => p.pricePerUnit),
+                    borderColor: accentColor,
+                    backgroundColor: accentSoftColor,
+                    fill: true,
+                    tension: 0.2,
+                    pointBackgroundColor: accentColor,
+                    pointRadius: history.length < 20 ? 4 : 0,
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { x: { ticks: { font: { family: "'Vazirmatn', sans-serif" }}}, y: { ticks: { font: { family: "'Vazirmatn', sans-serif" }}} },
+                plugins: { legend: { display: false } }
+              }
+          });
+        }
+      } catch (error) {
+        console.error('Error rendering price trend chart:', error);
       }
     }
-  }, [history]);
+    return () => {
+      if (chartInstance.current) {
+        chartInstance.current.destroy();
+        chartInstance.current = null;
+      }
+    };
+  }, [history, t.pricePerUnitLabel]);
 
   return (
     <div className={`fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
@@ -217,7 +227,7 @@ const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack, onLogout,}) => 
 
   return (
     <>
-      <Header title={t.itemsDashboardTitle} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout}>
+      <Header title={t.itemsDashboardTitle} onBack={onBack} backText={t.backToDashboard} onLogout={onLogout} hideMenu={true}>
         <button
           onClick={handleExportCsv}
           disabled={allItems.length === 0}

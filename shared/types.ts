@@ -208,12 +208,21 @@ export interface POSItem {
   variants?: POSVariant[]; // Preset variants for fast POS entry
 }
 
+export interface POSCustomizationOption {
+  id: string;
+  label: string; // e.g., "8/20 Robusta", "20ml", "No syrup"
+  price: number; // Price for this option
+  isCustomAmount?: boolean; // If true, allows custom amount input
+  unit?: string; // Unit for custom amount (e.g., "ml", "pump")
+  pricePerUnit?: number; // Price per unit for custom amounts
+}
+
 export interface POSCustomization {
   id: string;
-  name: string; // e.g., "Syrup Type", "Size"
+  name: string; // e.g., "Coffee Type", "Syrup"
   type: 'select' | 'number' | 'text';
-  options?: string[]; // For select type: ["Vanilla", "Chocolate"]
-  priceModifier?: number; // Additional cost for this customization
+  options?: POSCustomizationOption[]; // Options with individual prices
+  priceModifier?: number; // Legacy: Additional cost for this customization (deprecated, use options instead)
 }
 
 export interface POSVariant {
