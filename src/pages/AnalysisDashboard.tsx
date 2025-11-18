@@ -9,6 +9,9 @@ import { ItemStatus, InflationData, InflationDetail, ShoppingList, ShoppingItem,
 import Header from '../components/common/Header.tsx';
 import Card from '../components/common/Card.tsx';
 import SkeletonLoader from '../components/common/SkeletonLoader.tsx';
+import StatCard from '../components/common/StatCard.tsx';
+import TrendIndicator from '../components/common/TrendIndicator.tsx';
+import LoadingSpinner from '../components/common/LoadingSpinner.tsx';
 import { t } from '../../shared/translations.ts';
 import { useShoppingStore } from '../store/useShoppingStore.ts';
 import CurrencyDisplay from '../components/common/CurrencyDisplay.tsx';
@@ -190,31 +193,45 @@ const InflationTracker: React.FC = () => {
         };
     }, [inflationData]);
 
-    if (isLoading) return <div className="text-center py-8"><p>{t.generatingInflationData || "Loading..."}</p></div>;
-    if (!inflationData) return <div className="text-center py-8"><p>{t.noDataForPeriod}</p></div>;
+    if (isLoading) return (
+      <div className="text-center py-16 animate-fade-in">
+        <LoadingSpinner size="lg" text={t.generatingInflationData || "در حال تولید داده..."} />
+      </div>
+    );
+    if (!inflationData) return (
+      <div className="text-center py-16 animate-fade-in">
+        <p className="text-secondary text-lg">{t.noDataForPeriod}</p>
+      </div>
+    );
 
     const change = inflationData.overallChange;
     const changeText = change > 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`;
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="md:col-span-1 text-center">
-                    <h4 className="text-secondary text-sm mb-1">{t.overallInflation || "Overall Inflation"}</h4>
-                    <p className={`text-3xl font-bold ${change > 0.5 ? 'text-danger' : change < -0.5 ? 'text-success' : 'text-primary'}`}>{changeText}</p>
-                </Card>
-                <Card title={t.aiAnalystInsight} className="md:col-span-2">
-                    {isAiLoading ? <SkeletonLoader lines={3} /> : <p className="text-sm leading-relaxed whitespace-pre-wrap">{aiInsight}</p>}
+                <StatCard
+                  title={t.overallInflation || "تورم کلی"}
+                  value={changeText}
+                  variant={change > 0.5 ? 'danger' : change < -0.5 ? 'success' : 'default'}
+                  className="md:col-span-1"
+                />
+                <Card title={t.aiAnalystInsight} className="md:col-span-2 animate-fade-in">
+                    {isAiLoading ? (
+                      <SkeletonLoader lines={3} variant="text" />
+                    ) : (
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap animate-fade-in-up">{aiInsight}</p>
+                    )}
                 </Card>
             </div>
-            <Card title={t.priceIndexHistory || "Price Index"}>
-                <div className="h-[250px]"><canvas ref={chartRef}></canvas></div>
+            <Card title={t.priceIndexHistory || "تاریخچه شاخص قیمت"} className="animate-fade-in">
+                <div className="h-[300px]"><canvas ref={chartRef}></canvas></div>
             </Card>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <Card title={t.topPriceRisesItems || "Top Item Rises"}>
+                 <Card title={t.topPriceRisesItems || "بیشترین افزایش قیمت اقلام"} className="animate-fade-in">
                     <RiseList data={inflationData.topItemRises} />
                  </Card>
-                 <Card title={t.topPriceRisesCategories || "Top Category Rises"}>
+                 <Card title={t.topPriceRisesCategories || "بیشترین افزایش قیمت دسته‌ها"} className="animate-fade-in">
                      <RiseList data={inflationData.topCategoryRises} />
                  </Card>
              </div>
@@ -223,17 +240,23 @@ const InflationTracker: React.FC = () => {
 };
 
 const RiseList: React.FC<{data: InflationDetail[]}> = ({data}) => {
-    if (data.length === 0) return <p className="text-sm text-center text-secondary py-4">{t.noDataForPeriod}</p>;
+    if (data.length === 0) return (
+      <p className="text-sm text-center text-secondary py-4 animate-fade-in">{t.noDataForPeriod}</p>
+    );
     return (
         <ul className="space-y-3">
-            {data.map(item => (
-                <li key={item.name} className="flex justify-between items-center text-sm">
-                    <span className="font-medium text-primary">{item.name}</span>
-                    <div className="text-right">
-                        <span className={`font-bold ${item.changePercentage > 0 ? 'text-danger' : 'text-success'}`}>
+            {data.map((item, idx) => (
+                <li
+                  key={item.name}
+                  className="flex justify-between items-center text-sm p-3 rounded-lg bg-background hover:bg-surface transition-colors animate-fade-in"
+                  style={{ animationDelay: `${idx * 50}ms` }}
+                >
+                    <span className="font-medium text-primary truncate flex-1">{item.name}</span>
+                    <div className="text-right flex-shrink-0 mr-3">
+                        <span className={`font-bold text-sm ${item.changePercentage > 0 ? 'text-danger' : 'text-success'}`}>
                              {item.changePercentage > 0 ? '▲' : '▼'} {Math.abs(item.changePercentage).toFixed(1)}%
                         </span>
-                        <div className="text-xs text-secondary">
+                        <div className="text-xs text-secondary mt-1">
                             <CurrencyDisplay value={item.startPrice} /> &rarr; <CurrencyDisplay value={item.endPrice} />
                         </div>
                     </div>

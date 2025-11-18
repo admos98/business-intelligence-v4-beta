@@ -57,3 +57,6 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Import animations */
+@import './styles/animations.css';

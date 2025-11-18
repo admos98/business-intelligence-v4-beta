@@ -6,6 +6,7 @@ import { t } from '../../shared/translations.ts';
 import { parseJalaliDate, toJalaliDateString, gregorianToJalali } from '../../shared/jalali.ts';
 import { fetchData, saveData } from '../lib/api.ts';
 import { defaultUsers } from '../config/auth.ts';
+import { findFuzzyMatches, calculateSimilarity } from '../lib/fuzzyMatch.ts';
 
 type SummaryPeriod = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
 
@@ -799,6 +800,40 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const suggestions: SmartSuggestion[] = [];
         const oneDay = 24 * 60 * 60 * 1000;
         const REORDER_BUFFER_DAYS = 3;
+        const now = Date.now();
+
+        // Enhanced: Check for items with only sales data (recipe-based consumption)
+        const recipeBasedConsumption = new Map<string, { consumptions: { date: Date; amount: number }[]; name: string; unit: Unit; category: string }>();
+        consumptionHistory.forEach((data, key) => {
+          if (!purchaseHistory.has(key) && data.consumptions.length >= 3) {
+            // Try to find item info from various sources
+            const parts = key.split('-');
+            if (parts.length >= 2) {
+              const unit = parts.slice(1).join('-') as Unit;
+              const name = parts[0];
+              const info = get().itemInfoMap[name];
+              if (info) {
+                recipeBasedConsumption.set(key, {
+                  ...data,
+                  name,
+                  unit: info.unit,
+                  category: info.category,
+                });
+              } else {
+                // Try to find from known items
+                const knownItem = get().getAllKnownItems().find(i => i.name === name && i.unit === unit);
+                if (knownItem) {
+                  recipeBasedConsumption.set(key, {
+                    ...data,
+                    name: knownItem.name,
+                    unit: knownItem.unit,
+                    category: knownItem.category,
+                  });
+                }
+              }
+            }
+          }
+        });
 
         // Primary: use purchase history as baseline, deduct consumption inferred from sales
         purchaseHistory.forEach(history => {
@@ -806,6 +841,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
           const firstPurchase = history.purchases[0];
           const lastPurchase = history.purchases[history.purchases.length - 1];
+          const daysSinceLastPurchase = Math.round((now - lastPurchase.date.getTime()) / oneDay);
 
           const totalQuantityPurchased = history.purchases.reduce((s, p) => s + p.amount, 0);
           const totalDurationDays = Math.max(1, Math.round((lastPurchase.date.getTime() - firstPurchase.date.getTime()) / oneDay));
@@ -815,7 +851,11 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           const consumptions = consumptionHistory.get(key)?.consumptions || [];
           const consumedSinceLastPurchase = consumptions.filter(c => c.date.getTime() > lastPurchase.date.getTime()).reduce((s, c) => s + c.amount, 0);
 
-          const estimatedCurrentStock = Math.max(0, lastPurchase.amount - consumedSinceLastPurchase);
+          // Use actual stock if available, otherwise estimate
+          const actualStock = get().getStock(history.name, history.unit);
+          const estimatedCurrentStock = actualStock >= 0
+            ? actualStock
+            : Math.max(0, lastPurchase.amount - consumedSinceLastPurchase);
 
           // Prefer sales-derived rate if sufficient data, else fall back to purchase-derived rate
           let dailyConsumptionRate = dailyConsumptionRateFromPurchases;
@@ -830,16 +870,88 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           if (dailyConsumptionRate <= 0) return;
 
           const reorderPointQuantity = dailyConsumptionRate * REORDER_BUFFER_DAYS;
+          const avgPurchaseCycle = history.purchases.length > 1
+            ? totalDurationDays / history.purchases.length
+            : 30;
+
+          // Check for price inflation
+          const priceHistory = get().getItemPriceHistory(history.name, history.unit);
+          let inflationReason = '';
+          if (priceHistory.length >= 2) {
+            const recent = priceHistory.slice(-3);
+            const older = priceHistory.slice(0, Math.max(1, priceHistory.length - 3));
+            if (older.length > 0) {
+              const recentAvg = recent.reduce((s, p) => s + p.pricePerUnit, 0) / recent.length;
+              const olderAvg = older.reduce((s, p) => s + p.pricePerUnit, 0) / older.length;
+              if (olderAvg > 0 && recentAvg > olderAvg * 1.1) {
+                const percentIncrease = ((recentAvg - olderAvg) / olderAvg * 100).toFixed(1);
+                inflationReason = t.suggestionReasonInflation(percentIncrease);
+              }
+            }
+          }
 
           if (estimatedCurrentStock <= 0) {
-            suggestions.push({ name: history.name, unit: history.unit, category: history.category, lastPurchaseDate: lastPurchase.date.toISOString(), reason: t.suggestionReasonDepleted, priority: 'high' });
+            suggestions.push({
+              name: history.name,
+              unit: history.unit,
+              category: history.category,
+              lastPurchaseDate: lastPurchase.date.toISOString(),
+              avgPurchaseCycleDays: avgPurchaseCycle,
+              reason: inflationReason || t.suggestionReasonDepleted,
+              priority: 'high'
+            });
           } else if (estimatedCurrentStock <= reorderPointQuantity) {
             const daysLeft = Math.ceil(estimatedCurrentStock / dailyConsumptionRate);
-            suggestions.push({ name: history.name, unit: history.unit, category: history.category, lastPurchaseDate: lastPurchase.date.toISOString(), reason: t.suggestionReasonStockLow(estimatedCurrentStock, history.unit, daysLeft), priority: 'medium' });
+            suggestions.push({
+              name: history.name,
+              unit: history.unit,
+              category: history.category,
+              lastPurchaseDate: lastPurchase.date.toISOString(),
+              avgPurchaseCycleDays: avgPurchaseCycle,
+              reason: inflationReason || t.suggestionReasonStockLow(estimatedCurrentStock, history.unit, daysLeft),
+              priority: daysLeft <= 1 ? 'high' : 'medium'
+            });
+          } else if (daysSinceLastPurchase >= avgPurchaseCycle * 0.8 && daysSinceLastPurchase > 7) {
+            // Suggest based on purchase cycle
+            suggestions.push({
+              name: history.name,
+              unit: history.unit,
+              category: history.category,
+              lastPurchaseDate: lastPurchase.date.toISOString(),
+              avgPurchaseCycleDays: avgPurchaseCycle,
+              reason: `طبق الگوی خرید، زمان خرید مجدد نزدیک است (${Math.round(avgPurchaseCycle)} روز)`,
+              priority: 'low',
+            });
           }
         });
 
-        // Conservative fallback: do not suggest items that only have sales consumption but no purchase baseline
+        // Add recipe-based suggestions (items consumed but never directly purchased)
+        recipeBasedConsumption.forEach((data, key) => {
+          const consumptions = data.consumptions;
+          if (consumptions.length < 3) return;
+
+          const sorted = consumptions.sort((a, b) => a.date.getTime() - b.date.getTime());
+          const first = sorted[0].date;
+          const last = sorted[sorted.length - 1].date;
+          const totalConsumed = consumptions.reduce((s, c) => s + c.amount, 0);
+          const duration = Math.max(1, Math.round((last.getTime() - first.getTime()) / oneDay));
+          const dailyRate = totalConsumed / duration;
+          const daysSinceLastConsumption = Math.round((now - last.getTime()) / oneDay);
+
+          if (dailyRate > 0 && daysSinceLastConsumption > 7) {
+            const estimatedStock = Math.max(0, totalConsumed - (dailyRate * daysSinceLastConsumption));
+            if (estimatedStock <= dailyRate * REORDER_BUFFER_DAYS) {
+              suggestions.push({
+                name: data.name,
+                unit: data.unit,
+                category: data.category,
+                lastPurchaseDate: last.toISOString(),
+                reason: `مصرف از طریق دستور پخت: موجودی کم (${estimatedStock.toFixed(1)} ${data.unit})`,
+                priority: estimatedStock <= 0 ? 'high' : 'medium',
+              });
+            }
+          }
+        });
 
         const priorityRank: Record<SmartSuggestion['priority'], number> = { high: 0, medium: 1, low: 2 };
         return suggestions.sort((a, b) => {
@@ -847,6 +959,152 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           if (priorityDelta !== 0) return priorityDelta;
           return a.name.localeCompare(b.name, 'fa');
         });
+      },
+
+      getSmartItemSuggestions: (query, limit = 10) => {
+        if (!query || query.trim().length === 0) {
+          // Return frequently purchased items when no query
+          const allItems = get().getAllKnownItems();
+          const recentPurchases = get().getRecentPurchases(50);
+          const recentItemSet = new Set(recentPurchases.map(p => `${p.name}-${p.unit}`));
+
+          return allItems
+            .map(item => {
+              const isRecent = recentItemSet.has(`${item.name}-${item.unit}`);
+              const lastPurchase = get().getLatestPurchaseInfo(item.name, item.unit);
+              const daysSincePurchase = lastPurchase.pricePerUnit
+                ? Math.floor((Date.now() - new Date(get().lists
+                    .flatMap(l => l.items)
+                    .filter(i => i.name === item.name && i.unit === item.unit && i.status === ItemStatus.Bought)
+                    .sort((a, b) => new Date(b.purchaseDate || 0).getTime() - new Date(a.purchaseDate || 0).getTime())[0]?.purchaseDate || 0).getTime()) / (24 * 60 * 60 * 1000))
+                : 999;
+
+              let score = 0.5;
+              if (isRecent) score += 0.3;
+              if (item.purchaseCount > 5) score += 0.2;
+              if (daysSincePurchase < 30) score += 0.2;
+
+              return {
+                name: item.name,
+                unit: item.unit,
+                category: item.category,
+                score,
+                reason: isRecent
+                  ? 'اخیراً خریداری شده'
+                  : item.purchaseCount > 3
+                    ? 'کالای پر استفاده'
+                    : 'کالای شناخته شده',
+              };
+            })
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit);
+        }
+
+        const normalizedQuery = query.trim().toLowerCase();
+        const allKnownItems = get().getAllKnownItems();
+        const recentPurchases = get().getRecentPurchases(100);
+        const recentItemSet = new Set(recentPurchases.map(p => `${p.name}-${p.unit}`));
+
+        // Get all unique item names for fuzzy matching
+        const allItemNames = new Set<string>();
+        allKnownItems.forEach(item => allItemNames.add(item.name));
+        get().lists.forEach(list => {
+          list.items.forEach(item => allItemNames.add(item.name));
+        });
+        Object.keys(get().itemInfoMap).forEach(name => allItemNames.add(name));
+
+        // Find fuzzy matches
+        const fuzzyResults = findFuzzyMatches(normalizedQuery, Array.from(allItemNames), {
+          minScore: 0.2,
+          maxResults: limit * 2,
+          boostRecent: true,
+          recentItems: recentItemSet,
+        });
+
+        // Build comprehensive suggestions
+        const suggestions: Array<{ name: string; unit: Unit; category: string; score: number; reason: string }> = [];
+        const seen = new Set<string>();
+
+        fuzzyResults.forEach(match => {
+          // Find all units/categories for this item name
+          const itemVariants = allKnownItems.filter(i => i.name === match.item);
+
+          if (itemVariants.length > 0) {
+            itemVariants.forEach(item => {
+              const key = `${item.name}-${item.unit}`;
+              if (seen.has(key)) return;
+              seen.add(key);
+
+              const isRecent = recentItemSet.has(key);
+              const lastPurchase = get().getLatestPurchaseInfo(item.name, item.unit);
+              const stock = get().getStock(item.name, item.unit);
+
+              let score = match.score;
+              if (isRecent) score *= 1.3;
+              if (item.purchaseCount > 5) score *= 1.2;
+              if (stock > 0) score *= 0.9; // Slightly lower if in stock
+
+              let reason = '';
+              if (match.score > 0.9) reason = 'تطابق دقیق';
+              else if (match.score > 0.7) reason = 'تطابق خوب';
+              else reason = 'تطابق احتمالی';
+
+              if (isRecent) reason += ' • اخیراً خریداری شده';
+              if (item.purchaseCount > 3) reason += ' • پر استفاده';
+              if (stock <= 0) reason += ' • موجودی تمام شده';
+
+              suggestions.push({
+                name: item.name,
+                unit: item.unit,
+                category: item.category,
+                score: Math.min(1.0, score),
+                reason: reason || 'پیشنهاد هوشمند',
+              });
+            });
+          } else {
+            // Item name found but no purchase history - use itemInfoMap
+            const info = get().itemInfoMap[match.item];
+            if (info) {
+              const key = `${match.item}-${info.unit}`;
+              if (seen.has(key)) return;
+              seen.add(key);
+
+              suggestions.push({
+                name: match.item,
+                unit: info.unit,
+                category: info.category,
+                score: match.score * 0.7, // Lower score for items without purchase history
+                reason: 'کالای شناخته شده',
+              });
+            }
+          }
+        });
+
+        // Also check POS items for suggestions (if they map to buy items)
+        const posItems = get().posItems;
+        posItems.forEach(posItem => {
+          const similarity = calculateSimilarity(normalizedQuery, posItem.name);
+          if (similarity > 0.5) {
+            const info = get().itemInfoMap[posItem.name];
+            if (info) {
+              const key = `${posItem.name}-${info.unit}`;
+              if (!seen.has(key)) {
+                seen.add(key);
+                suggestions.push({
+                  name: posItem.name,
+                  unit: info.unit,
+                  category: info.category,
+                  score: similarity * 0.8,
+                  reason: 'کالای فروشگاهی',
+                });
+              }
+            }
+          }
+        });
+
+        return suggestions
+          .sort((a, b) => b.score - a.score)
+          .slice(0, limit);
       },
 
       getPendingPayments: () => {

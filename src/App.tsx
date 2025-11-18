@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import Dashboard from './pages/Dashboard';
 import ShoppingView from './pages/ShoppingView';
 import AnalysisDashboard from './pages/AnalysisDashboard';
@@ -12,12 +12,14 @@ import FinancialDashboard from './pages/FinancialDashboard';
 import LoginPage from './pages/LoginPage';
 import Navbar from './components/common/Navbar';
 import { ToastProvider } from './components/common/Toast';
-import { ErrorBoundary } from './components/common/ErrorBoundary';
+import ErrorBoundary from './components/common/ErrorBoundary';
+import LoadingSpinner from './components/common/LoadingSpinner';
 import { SafeSVG } from './components/common/SafeSVG';
 import { useTheme } from './hooks/useTheme';
 import { useShoppingStore } from './store/useShoppingStore';
 import { t } from '../shared/translations';
 import { logoSvg } from './assets/logo';
+import './styles/animations.css';
 
 type View = 'dashboard' | 'list' | 'analysis' | 'vendors' | 'summary' | 'items' | 'sell' | 'recipes' | 'sellAnalysis' | 'financial';
 
@@ -56,9 +58,10 @@ const App: React.FC = () => {
   const renderView = () => {
     if (isHydrating) {
       return (
-        <div className="flex flex-col items-center justify-center min-h-screen text-center">
-            <SafeSVG svgContent={logoSvg} className="w-20 h-20 mb-4" />
-            <h2 className="text-xl font-semibold text-primary">{t.loadingData}</h2>
+        <div className="flex flex-col items-center justify-center min-h-screen text-center animate-fade-in">
+            <SafeSVG svgContent={logoSvg} className="w-20 h-20 mb-4 animate-pulse" />
+            <LoadingSpinner size="lg" className="my-4" />
+            <h2 className="text-xl font-semibold text-primary mb-2">{t.loadingData}</h2>
             <p className="text-secondary">{t.syncingData}</p>
         </div>
       );
@@ -108,7 +111,7 @@ const App: React.FC = () => {
     return (
       <ErrorBoundary>
         <ToastProvider>
-          <div className="min-h-screen bg-background text-primary font-sans">
+          <div className="min-h-screen bg-background text-primary font-sans animate-fade-in">
             <LoginPage onLogin={login} />
           </div>
         </ToastProvider>
@@ -119,10 +122,12 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <ToastProvider>
-        <div className="min-h-screen bg-background text-primary font-sans flex md:flex-row">
+        <div className="min-h-screen bg-background text-primary font-sans flex md:flex-row transition-all">
           <Navbar currentView={view} onNavigate={handleNavigate} onLogout={handleLogout} />
-          <main className="flex-1 w-full md:w-auto">
-            {renderView()}
+          <main className="flex-1 w-full md:w-auto animate-fade-in">
+            <Suspense fallback={<LoadingSpinner size="lg" className="min-h-screen" text="در حال بارگذاری..." />}>
+              {renderView()}
+            </Suspense>
           </main>
         </div>
       </ToastProvider>

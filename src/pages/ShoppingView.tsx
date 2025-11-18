@@ -1,4 +1,4 @@
-import React, { useState, useMemo} from 'react';
+import React, { useState, useMemo, useCallback, memo } from 'react';
 import { ShoppingList, ShoppingItem, Unit, ItemStatus, PaymentMethod, PaymentStatus, OcrResult } from '../../shared/types';
 import { t } from '../../shared/translations';
 import Header from '../components/common/Header';
@@ -12,6 +12,13 @@ import { useToast } from '../components/common/Toast';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import { exportComponentAsPdf } from '../lib/pdfExport';
 import Card from '../components/common/Card';
+import Button from '../components/common/Button';
+import SmartAutocomplete from '../components/common/SmartAutocomplete';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+import PendingItemRow from '../components/common/PendingItemRow';
+import PurchasedItemRow from '../components/common/PurchasedItemRow';
+import BulkActions from '../components/common/BulkActions';
+import AdvancedFilter from '../components/common/AdvancedFilter';
 
 const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L14.732 3.732z" /></svg>;
 const DeleteIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
@@ -60,8 +67,7 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
     updateList(listId, updatedList);
   };
 
-  const handleNewItemNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const name = e.target.value;
+  const handleNewItemNameChange = (name: string) => {
     setNewItemName(name);
 
     const rememberedInfo = getItemInfo(name);
@@ -71,7 +77,13 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
     }
   };
 
-  const handleAddItem = () => {
+  const handleItemSelect = (item: { name: string; unit: Unit; category: string }) => {
+    setNewItemName(item.name);
+    setNewItemUnit(item.unit);
+    setNewItemCategory(item.category);
+  };
+
+  const handleAddItem = useCallback(() => {
     if (!list) {
       addToast(t.syncError, 'error');
       return;
@@ -91,7 +103,7 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
       addToast(t.itemAdded, 'success');
       setNewItemName(''); setNewItemAmount(''); setNewItemCategory(''); setNewItemUnit(Unit.Piece);
     }
-  };
+  }, [list, newItemName, newItemAmount, newItemUnit, newItemCategory, getLatestPricePerUnit, addCustomData, onUpdateList, addToast]);
 
   const handleAddOcrItems = (ocrResult: OcrResult, paymentMethod: PaymentMethod, paymentStatus: PaymentStatus, vendorName?: string) => {
     const listName = addOcrPurchase(ocrResult, paymentMethod, paymentStatus, vendorName);
@@ -328,7 +340,11 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
   const totalDue = useMemo(() => boughtItems.filter(i => i.paymentStatus === PaymentStatus.Due).reduce((sum, item) => sum + (item.paidPrice || 0), 0), [boughtItems]);
   const totalEstimatedCost = useMemo(() => pendingItems.reduce((sum, item) => sum + (item.estimatedPrice || 0), 0), [pendingItems]);
 
-  if (!list) return <div className="text-center p-8">{t.loadingData}</div>;
+  if (!list) return (
+    <div className="text-center p-8 animate-fade-in">
+      <LoadingSpinner size="lg" text={t.loadingData} />
+    </div>
+  );
 
   return (
     <div>
@@ -350,10 +366,13 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
                 <div className="sticky top-24 space-y-6">
                     <Card title={t.addNewItem}>
                     <div className="space-y-4">
-                        <input type="text" value={newItemName} list="known-items" onChange={handleNewItemNameChange} placeholder={t.itemName} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"/>
-                        <datalist id="known-items">
-                            {knownItemNames.map(name => <option key={name} value={name} />)}
-                        </datalist>
+                        <SmartAutocomplete
+                          value={newItemName}
+                          onChange={handleNewItemNameChange}
+                          onSelect={handleItemSelect}
+                          placeholder={t.itemName}
+                          maxSuggestions={8}
+                        />
 
                         <div className="grid grid-cols-2 gap-4">
                             <input type="number" value={newItemAmount} onChange={e => setNewItemAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder={t.amount} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"/>
@@ -364,8 +383,12 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
                         <datalist id="categories">{allCategories().map(cat => <option key={cat} value={cat}/>)}</datalist>
 
                         <div className="grid grid-cols-2 gap-4">
-                            <button onClick={() => setIsOcrModalOpen(true)} className="px-4 py-2 bg-border text-primary font-medium rounded-lg hover:bg-border/70 transition-colors h-full">{t.addFromReceipt}</button>
-                            <button onClick={handleAddItem} className="w-full px-4 py-2 bg-accent text-accent-text font-medium rounded-lg hover:opacity-90 transition-opacity">{t.addItem}</button>
+                            <Button variant="secondary" onClick={() => setIsOcrModalOpen(true)} fullWidth>
+                              {t.addFromReceipt}
+                            </Button>
+                            <Button variant="primary" onClick={handleAddItem} fullWidth>
+                              {t.addItem}
+                            </Button>
                         </div>
                     </div>
                     </Card>
@@ -388,8 +411,10 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
                 </div>
             </div>
             <div className="lg:col-span-2 space-y-8">
-                 <section>
-                    <h2 className="text-xl font-bold text-primary border-b border-border pb-2 mb-4">{t.toBuy} ({pendingItems.length})</h2>
+                 <section className="animate-fade-in">
+                    <h2 className="text-xl font-bold text-primary border-b border-border pb-2 mb-4 animate-fade-in-down">
+                      {t.toBuy} ({pendingItems.length})
+                    </h2>
                     {pendingItems.length > 0 ? (
                         <div className="space-y-6">
                             {Object.entries(groupedPendingItems)
@@ -399,21 +424,15 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
                                     <h3 className="text-md font-bold text-secondary mb-3">{category}</h3>
                                     <ul className="space-y-3">
                                     {items.map(item => (
-                                        <li key={item.id} className={`p-3 rounded-lg transition-all duration-300 flex items-center gap-4 group ${selectedItemIds.has(item.id) ? 'bg-accent/10' : 'bg-surface border border-transparent hover:border-accent/50'}`}>
-                                            <input type="checkbox" checked={selectedItemIds.has(item.id)} onChange={() => handleSelectItem(item.id)} className="form-checkbox h-5 w-5 rounded bg-background border-border text-accent focus:ring-accent flex-shrink-0"/>
-                                            <div className="flex-grow flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                                            <div>
-                                                <span className="font-medium text-primary">{item.name} - {item.amount} {item.unit}</span>
-                                                {item.estimatedPrice && <CurrencyDisplay value={item.estimatedPrice} className="text-xs text-secondary/80 ml-2" />}
-                                                <span className="text-xs text-secondary block">{item.category}</span>
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                <button onClick={() => setItemToBuy(item)} className="px-3 py-1 bg-success/20 text-success text-sm font-medium rounded-md hover:bg-success/30 transition-colors">{t.buy}</button>
-                                                <button onClick={() => setItemToEdit(item)} title={t.edit} className="p-1.5 text-secondary hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"><EditIcon/></button>
-                                                <button onClick={() => handleDeleteItem(item.id)} title={t.delete} className="p-1.5 text-secondary hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity"><DeleteIcon/></button>
-                                            </div>
-                                            </div>
-                                        </li>
+                                        <PendingItemRow
+                                          key={item.id}
+                                          item={item}
+                                          isSelected={selectedItemIds.has(item.id)}
+                                          onSelect={() => handleSelectItem(item.id)}
+                                          onBuy={() => setItemToBuy(item)}
+                                          onEdit={() => setItemToEdit(item)}
+                                          onDelete={() => handleDeleteItem(item.id)}
+                                        />
                                     ))}
                                     </ul>
                                 </div>
@@ -422,8 +441,10 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
                     : <p className="text-secondary">{t.allItemsPurchased}</p>}
                 </section>
 
-                <section>
-                    <h2 className="text-xl font-bold text-primary border-b border-border pb-2 mb-4">{t.purchased} ({boughtItems.length})</h2>
+                <section className="animate-fade-in">
+                    <h2 className="text-xl font-bold text-primary border-b border-border pb-2 mb-4 animate-fade-in-down">
+                      {t.purchased} ({boughtItems.length})
+                    </h2>
                     {boughtItems.length > 0 ? (
                     <div className="space-y-6">
                          {Object.entries(groupedBoughtItems)
@@ -433,31 +454,15 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
                                     <h3 className="text-md font-bold text-secondary mb-3">{category}</h3>
                                     <ul className="space-y-4">
                                         {items.map(item => (
-                                            <li key={item.id} className="bg-surface/70 p-4 rounded-lg border border-border/50">
-                                                <div className="flex flex-wrap items-start justify-between gap-4">
-                                                    <div className="flex-1">
-                                                        <p className="font-semibold text-md text-primary">{item.name}</p>
-                                                        <p className="text-sm text-secondary">{item.purchasedAmount ?? item.amount} {item.unit}</p>
-                                                        {item.vendorId && <p className="text-xs text-secondary mt-1">از: {vendorMap.get(item.vendorId) || 'نامشخص'}</p>}
-                                                    </div>
-                                                    <div className="flex-1 text-left sm:text-center">
-                                                        <CurrencyDisplay value={item.paidPrice || 0} className="font-semibold text-accent text-md" />
-                                                        <div className="flex items-center gap-2 mt-1 flex-wrap justify-start sm:justify-center">
-                                                            {item.paymentStatus && (<span className={`text-xs font-bold px-2 py-1 rounded-full ${item.paymentStatus === PaymentStatus.Paid ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}`}>{item.paymentStatus}</span>)}
-                                                            {item.paymentMethod && <span className="text-xs text-secondary bg-background px-2 py-1 rounded-full">{item.paymentMethod}</span>}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 sm:justify-end w-full sm:w-auto">
-                                                        {item.paymentStatus === PaymentStatus.Due && (
-                                                            <button onClick={() => handleMarkAsPaid(item.id)} className="px-3 py-1 bg-success text-accent-text text-sm font-medium rounded-md hover:opacity-90 transition-colors">
-                                                                {t.markAsPaid}
-                                                            </button>
-                                                        )}
-                                                        <button onClick={() => setItemToEditPurchased(item)} title={t.edit} className="p-1.5 text-secondary hover:text-primary"><EditIcon /></button>
-                                                        <button onClick={() => updateItem(listId, item.id, { status: ItemStatus.Pending, paidPrice: undefined, purchasedAmount: undefined, vendorId: undefined, paymentMethod: undefined, paymentStatus: undefined })} title={t.moveToToBuy} className="p-1.5 text-secondary hover:text-primary"><UndoIcon /></button>
-                                                    </div>
-                                                </div>
-                                            </li>))}
+                                            <PurchasedItemRow
+                                              key={item.id}
+                                              item={item}
+                                              vendorName={item.vendorId ? vendorMap.get(item.vendorId) : undefined}
+                                              onMarkAsPaid={item.paymentStatus === PaymentStatus.Due ? () => handleMarkAsPaid(item.id) : undefined}
+                                              onEdit={() => setItemToEditPurchased(item)}
+                                              onMoveToPending={() => updateItem(listId, item.id, { status: ItemStatus.Pending, paidPrice: undefined, purchasedAmount: undefined, vendorId: undefined, paymentMethod: undefined, paymentStatus: undefined })}
+                                            />
+                                        ))}
                                     </ul>
                                 </div>
                          ))}
@@ -468,11 +473,18 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
        </div>
       </main>
 
-      {selectedItemIds.size > 0 && (
-        <div className={`fixed bottom-0 left-0 right-0 bg-surface/80 backdrop-blur-lg shadow-lg z-20 border-t border-accent/50 transition-transform duration-300 ${selectedItemIds.size > 0 ? 'translate-y-0' : 'translate-y-full'}`}>
-          <div className="max-w-7xl mx-auto p-3 flex justify-between items-center"><span className="font-bold text-primary">{t.itemsSelected(selectedItemIds.size)}</span><button onClick={() => setIsBulkBuyModalOpen(true)} className="px-5 py-2 bg-accent text-accent-text font-medium rounded-lg hover:opacity-90 transition-opacity shadow-sm">{t.bulkBuy}</button></div>
-        </div>
-      )}
+      <BulkActions
+        selectedCount={selectedItemIds.size}
+        onDeselectAll={() => setSelectedItemIds(new Set())}
+        actions={[
+          {
+            label: t.bulkBuy,
+            icon: <CheckIcon />,
+            onClick: () => setIsBulkBuyModalOpen(true),
+            variant: 'primary',
+          },
+        ]}
+      />
 
       {itemToBuy && <BuyItemModal item={itemToBuy} onClose={() => setItemToBuy(null)} onConfirm={handleConfirmBuy} />}
       {itemToEdit && <EditItemModal item={itemToEdit} onClose={() => setItemToEdit(null)} onSave={handleSaveEdit} />}

@@ -10,6 +10,9 @@ import { useToast } from '../components/common/Toast';
 import { toJalaliDateString, gregorianToJalali } from '../../shared/jalali';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import Card from '../components/common/Card';
+import Button from '../components/common/Button';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+import { useDebounce } from '../hooks/useDebounce';
 
 interface DashboardProps {
   onSelectList: (listId: string) => void;
@@ -34,6 +37,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
   const [expandSuggestions, setExpandSuggestions] = useState(false);
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   const importInputRef = useRef<HTMLInputElement>(null);
   const { addToast } = useToast();
@@ -119,15 +123,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
 
   const filteredLists = useMemo(() => {
     const sortedLists = [...lists].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    if (!searchQuery.trim()) {
+    if (!debouncedSearchQuery.trim()) {
       return sortedLists;
     }
-    const query = searchQuery.toLowerCase().trim();
+    const query = debouncedSearchQuery.toLowerCase().trim();
     return sortedLists.filter(list =>
       list.name.toLowerCase().includes(query) ||
       list.items.some(item => item.name.toLowerCase().includes(query))
     );
-  }, [searchQuery, lists]);
+  }, [debouncedSearchQuery, lists]);
 
   const { currentMonthLists, pastMonthsGroups } = useMemo(() => {
     const today = new Date();
@@ -220,12 +224,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
                                     {displayedSuggestions.map(s => <SmartSuggestionCard key={s.name+s.unit} suggestion={s} onAdd={handleAddItemFromSuggestion} isAdded={isItemInTodaysPendingList(s.name, s.unit)} />)}
                                 </div>
                                 {hiddenSuggestionsCount > 0 && (
-                                    <button
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        fullWidth
                                         onClick={() => setExpandSuggestions(!expandSuggestions)}
-                                        className="w-full mt-3 px-4 py-2 text-sm font-medium text-accent bg-accent/10 rounded-lg hover:bg-accent/20 transition-colors border border-accent/30"
+                                        className="mt-3"
                                     >
                                         {expandSuggestions ? t.collapseSuggestions : t.expandSuggestions(hiddenSuggestionsCount)}
-                                    </button>
+                                    </Button>
                                 )}
                             </div>
                         ) : (
@@ -257,28 +264,50 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
               />
               <SearchIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary" />
           </div>
-          <div className="flex gap-2 justify-end">
+          <div className="flex gap-2 justify-end flex-wrap">
              <input type="file" ref={importInputRef} className="hidden" accept=".json" onChange={handleImportData} />
-             <button onClick={() => setImportConfirmOpen(true)} className="px-3 py-2 text-sm text-secondary font-medium rounded-lg hover:bg-surface transition-colors">{t.importData}</button>
-             <button onClick={handleExportData} className="px-3 py-2 text-sm text-secondary font-medium rounded-lg hover:bg-surface transition-colors">{t.exportData}</button>
-            <button
+             <Button variant="ghost" size="sm" onClick={() => setImportConfirmOpen(true)}>
+               {t.importData}
+             </Button>
+             <Button variant="ghost" size="sm" onClick={handleExportData}>
+               {t.exportData}
+             </Button>
+            <Button
               onClick={() => setIsNewListModalOpen(true)}
-              className="px-4 py-2 bg-accent text-accent-text font-medium rounded-lg hover:opacity-90 transition-opacity shadow-md shadow-accent/20 whitespace-nowrap"
+              size="sm"
+              icon={<PlusIcon />}
             >
               {t.createNewList}
-            </button>
+            </Button>
           </div>
         </div>
 
         {lists.length === 0 ? (
-          <div className="text-center py-16 px-6 bg-surface rounded-xl border border-border shadow-card">
-            <p className="text-secondary text-lg">{t.noListsYet}</p>
-            <p className="mt-2">{t.getStartedPrompt}</p>
-          </div>
-        ) : filteredLists.length === 0 ? (
-            <div className="text-center py-16 px-6 bg-surface rounded-xl border border-border shadow-card col-span-full">
-                <p className="text-secondary text-lg">{t.noListsFoundForSearch(searchQuery)}</p>
+          <Card className="col-span-full">
+            <div className="text-center py-16 px-6 animate-fade-in">
+              <div className="text-6xl mb-4 animate-scale-in">📝</div>
+              <p className="text-secondary text-lg font-semibold mb-2 animate-fade-in-down">{t.noListsYet}</p>
+              <p className="text-secondary mb-6 animate-fade-in-up">{t.getStartedPrompt}</p>
+              <Button
+                variant="primary"
+                onClick={() => setIsNewListModalOpen(true)}
+                icon={<PlusIcon />}
+                className="animate-fade-in-up"
+                style={{ animationDelay: '200ms' }}
+              >
+                {t.createNewList}
+              </Button>
             </div>
+          </Card>
+        ) : filteredLists.length === 0 ? (
+            <Card className="col-span-full">
+              <div className="text-center py-16 px-6 animate-fade-in">
+                <div className="text-5xl mb-4 animate-scale-in">🔍</div>
+                <p className="text-secondary text-lg font-semibold animate-fade-in-down">
+                  {t.noListsFoundForSearch(searchQuery)}
+                </p>
+              </div>
+            </Card>
         ) : (
           <div className="space-y-8">
             {currentMonthLists.length > 0 && (
@@ -347,39 +376,54 @@ const ListCard: React.FC<{list: ShoppingList, onSelect: (id: string) => void, on
 
     const getStatusPill = () => {
       if (totalItems > 0 && boughtItems === totalItems) {
-        return <span className="text-xs font-medium px-2 py-1 bg-success-soft text-success rounded-full">{t.completed}</span>;
+        return <span className="text-xs font-medium px-2 py-1 bg-success-soft text-success rounded-full animate-scale-in">{t.completed}</span>;
       }
       if (boughtItems > 0) {
-        return <span className="text-xs font-medium px-2 py-1 bg-yellow-400/20 text-yellow-600 dark:text-yellow-400 rounded-full">{t.inProgress}</span>;
+        return <span className="text-xs font-medium px-2 py-1 bg-yellow-400/20 text-yellow-600 dark:text-yellow-400 rounded-full animate-scale-in">{t.inProgress}</span>;
       }
-      return <span className="text-xs font-medium px-2 py-1 bg-secondary/20 text-secondary rounded-full">{t.new}</span>;
+      return <span className="text-xs font-medium px-2 py-1 bg-secondary/20 text-secondary rounded-full animate-scale-in">{t.new}</span>;
     };
 
     return (
-      <div
-        className="bg-surface rounded-xl border border-border flex flex-col group transition-all duration-300 hover:-translate-y-1 hover:shadow-glow shadow-card"
+      <Card
+        className="flex flex-col group hover-lift animate-fade-in p-0 overflow-hidden"
+        hover
+        onClick={() => onSelect(list.id)}
       >
-        <div role="button" tabIndex={0} className="flex-grow cursor-pointer" onClick={() => onSelect(list.id)} onKeyDown={(e) => e.key === 'Enter' && onSelect(list.id)}>
-            <div className="p-5">
-                <div className="flex justify-between items-start">
-                  <h2 className="text-lg font-bold text-primary mb-2">{list.name}</h2>
-                  {getStatusPill()}
-                </div>
-                <p className="text-sm text-secondary mb-4">{toJalaliDateString(list.createdAt, { format: 'long' })}</p>
-                <div className="text-sm text-secondary space-y-2">
-                  <p>{t.totalItems}: <span className="font-medium text-primary">{totalItems}</span></p>
-                  <p>{t.itemsPurchased}: <span className="font-medium text-primary">{boughtItems}</span></p>
-                </div>
-            </div>
-             <div className="px-5 pb-5">
-                <p className="text-xs text-secondary mb-1">{t.progress}</p>
-                <div className="w-full bg-background rounded-full h-1.5"><div className="bg-accent h-1.5 rounded-full" style={{ width: `${progress}%` }}></div></div>
-            </div>
+        <div className="flex-grow p-5">
+          <div className="flex justify-between items-start mb-2">
+            <h2 className="text-lg font-bold text-primary animate-fade-in-down">{list.name}</h2>
+            {getStatusPill()}
+          </div>
+          <p className="text-sm text-secondary mb-4 animate-fade-in-up">{toJalaliDateString(list.createdAt, { format: 'long' })}</p>
+          <div className="text-sm text-secondary space-y-2 animate-fade-in-up">
+            <p>{t.totalItems}: <span className="font-medium text-primary">{totalItems}</span></p>
+            <p>{t.itemsPurchased}: <span className="font-medium text-primary">{boughtItems}</span></p>
+          </div>
         </div>
-        <div className="p-2 border-t border-border text-center opacity-0 group-hover:opacity-100 transition-opacity">
-           <button onClick={(e) => { e.stopPropagation(); onDelete(list.id, list.name); }} className="text-danger/70 text-xs hover:underline font-medium hover:text-danger">{t.delete}</button>
+        <div className="px-5 pb-5 animate-fade-in-up">
+          <p className="text-xs text-secondary mb-1">{t.progress}</p>
+          <div className="w-full bg-background rounded-full h-2 overflow-hidden">
+            <div
+              className="bg-accent h-2 rounded-full transition-all duration-500 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
-      </div>
+        <div className="p-2 border-t border-border text-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(list.id, list.name);
+            }}
+            className="w-full"
+          >
+            {t.delete}
+          </Button>
+        </div>
+      </Card>
     );
 };
 
