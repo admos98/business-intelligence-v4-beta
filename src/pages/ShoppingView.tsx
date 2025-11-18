@@ -250,6 +250,40 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack, onLogout })
     }
   };
 
+  const handleExportCsv = () => {
+    if (!list) {
+      addToast(t.syncError, 'error');
+      return;
+    }
+
+    const headers = ['name', 'amount', 'unit', 'category', 'status', 'paidPrice', 'purchasedAmount', 'vendorName', 'paymentMethod', 'paymentStatus'];
+    const rows = list.items.map(item => {
+      const vendorName = item.vendorId ? vendorMap.get(item.vendorId) : '';
+      return [
+        item.name,
+        String(item.amount),
+        item.unit,
+        item.category || '',
+        item.status,
+        String(item.paidPrice || ''),
+        String(item.purchasedAmount || ''),
+        vendorName,
+        item.paymentMethod || '',
+        item.paymentStatus || '',
+      ];
+    });
+
+    const csv = [headers.join(','), ...rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${list.name.replace(/ /g, '_')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast('CSV با موفقیت صادر شد', 'success');
+  };
+
   const handleExportJson = () => {
       if (!list) {
         addToast(t.syncError, 'error');
