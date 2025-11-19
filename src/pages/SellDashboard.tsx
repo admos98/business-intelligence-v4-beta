@@ -1042,176 +1042,58 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                     </div>
                   </div>
 
-                  {/* VARIANTS EDITOR */}
+                  {/* VARIANTS EDITOR - Simplified */}
                   <div className="mt-4">
                     <label className="text-sm font-medium text-primary block mb-2">
-                      ورژن‌های آماده (اختیاری)
-                      <span className="text-xs text-secondary block mt-1">مثال: قهوه (با گزینه‌های خطوط قهوه، دکاف)، شربت (با گزینه‌های نوع و مقدار)</span>
+                      ورژن‌ها (اختیاری)
+                      <span className="text-xs text-secondary block mt-1 font-normal">
+                        ورژن‌ها برای اقلامی که چند نوع مختلف دارند (مثال: قهوه با انواع مختلف). هر ورژن می‌تواند قیمت و سفارشی‌سازی‌های خاص خود را داشته باشد.
+                      </span>
                     </label>
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       {newItemVariants.map((v, idx) => (
-                        <div key={v.id} className="p-4 bg-background rounded-lg border-2 border-border">
-                          <div className="flex gap-2 items-center mb-3">
+                        <div key={v.id} className="p-3 bg-background rounded-lg border border-border">
+                          <div className="flex gap-2 items-center mb-2">
                             <input
                               value={v.name}
                               onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))}
-                              className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
-                              placeholder="نام ورژن (مثال: قهوه)"
+                              className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+                              placeholder="نام ورژن (مثال: قهوه اسپرسو)"
                             />
                             <input
                               type="number"
                               value={String(v.priceModifier)}
                               onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? { ...p, priceModifier: parseFloat(e.target.value) || 0 } : p))}
-                              className="w-32 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
-                              placeholder="تغییر قیمت"
+                              className="w-28 px-2 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+                              placeholder="±قیمت"
                             />
                             <Button variant="danger" size="sm" onClick={() => setNewItemVariants(prev => prev.filter((_, i) => i !== idx))}>
-                              حذف ورژن
+                              حذف
                             </Button>
                           </div>
 
-                          {/* Variant-specific customizations */}
-                          <div className="mt-3 pt-3 border-t border-border">
-                            <label className="text-xs font-medium text-secondary block mb-2">
-                              سفارشی‌سازی‌های این ورژن (مثال: برای قهوه: خطوط قهوه، دکاف/عادی)
-                            </label>
-                            <div className="space-y-3">
-                              {(v.customizations || []).map((cust, custIdx) => (
-                                <div key={cust.id} className="p-2 bg-surface rounded border border-border">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <input
-                                      value={cust.name}
-                                      onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
+                          {/* Variant-specific customizations - simplified display */}
+                          {v.customizations && v.customizations.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-border">
+                              <p className="text-xs text-secondary mb-2">سفارشی‌سازی‌های این ورژن:</p>
+                              <div className="space-y-1">
+                                {v.customizations.map((cust, custIdx) => (
+                                  <div key={cust.id} className="flex items-center gap-1 text-xs">
+                                    <span className="text-secondary">{cust.name}</span>
+                                    <Button
+                                      variant="danger"
+                                      size="sm"
+                                      onClick={() => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
                                         ...p,
-                                        customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? { ...c, name: e.target.value } : c)
+                                        customizations: (p.customizations || []).filter((_, ci) => ci !== custIdx)
                                       } : p))}
-                                      className="flex-1 px-2 py-1 bg-background border border-border rounded text-sm"
-                                      placeholder="نام (مثال: خطوط قهوه)"
-                                    />
-                                    <select
-                                      value={cust.type}
-                                      onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                        ...p,
-                                        customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? { ...c, type: e.target.value as 'select' | 'number' | 'text' } : c)
-                                      } : p))}
-                                      className="ml-2 px-2 py-1 bg-background border border-border rounded text-sm"
+                                      className="h-5 px-1 text-xs"
                                     >
-                                      <option value="select">انتخابی</option>
-                                      <option value="number">عدد</option>
-                                      <option value="text">متن</option>
-                                    </select>
-                                    <Button variant="danger" size="sm" onClick={() => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                      ...p,
-                                      customizations: (p.customizations || []).filter((_, ci) => ci !== custIdx)
-                                    } : p))} className="ml-2">
                                       ×
                                     </Button>
                                   </div>
-
-                                  {/* Options for select type */}
-                                  {cust.type === 'select' && (
-                                    <div className="mt-2 space-y-1">
-                                      {cust.options?.map((opt, optIdx) => (
-                                        <div key={opt.id} className="flex gap-1 items-center text-xs">
-                                          <input
-                                            value={opt.label}
-                                            onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                              ...p,
-                                              customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                                ...c,
-                                                options: c.options?.map((o, oi) => oi === optIdx ? { ...o, label: e.target.value } : o) || []
-                                              } : c)
-                                            } : p))}
-                                            className="flex-1 px-2 py-1 bg-background border border-border rounded"
-                                            placeholder="برچسب"
-                                          />
-                                          <input
-                                            type="number"
-                                            value={String(opt.price)}
-                                            onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                              ...p,
-                                              customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                                ...c,
-                                                options: c.options?.map((o, oi) => oi === optIdx ? { ...o, price: parseFloat(e.target.value) || 0 } : o) || []
-                                              } : c)
-                                            } : p))}
-                                            className="w-20 px-2 py-1 bg-background border border-border rounded"
-                                            placeholder="قیمت"
-                                          />
-                                          <label className="flex items-center gap-1 text-xs whitespace-nowrap">
-                                            <input
-                                              type="checkbox"
-                                              checked={opt.isCustomAmount || false}
-                                              onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                                ...p,
-                                                customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                                  ...c,
-                                                  options: c.options?.map((o, oi) => oi === optIdx ? { ...o, isCustomAmount: e.target.checked } : o) || []
-                                                } : c)
-                                              } : p))}
-                                            />
-                                            سفارشی
-                                          </label>
-                                          {opt.isCustomAmount && (
-                                            <>
-                                              <input
-                                                value={opt.unit || ''}
-                                                onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                                  ...p,
-                                                  customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                                    ...c,
-                                                    options: c.options?.map((o, oi) => oi === optIdx ? { ...o, unit: e.target.value } : o) || []
-                                                  } : c)
-                                                } : p))}
-                                                className="w-16 px-1 py-1 bg-background border border-border rounded text-xs"
-                                                placeholder="واحد"
-                                              />
-                                              <input
-                                                type="number"
-                                                value={String(opt.pricePerUnit || '')}
-                                                onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                                  ...p,
-                                                  customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                                    ...c,
-                                                    options: c.options?.map((o, oi) => oi === optIdx ? { ...o, pricePerUnit: parseFloat(e.target.value) || 0 } : o) || []
-                                                  } : c)
-                                                } : p))}
-                                                className="w-20 px-1 py-1 bg-background border border-border rounded text-xs"
-                                                placeholder="قیمت/واحد"
-                                              />
-                                            </>
-                                          )}
-                                          <Button variant="danger" size="sm" onClick={() => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                            ...p,
-                                            customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                              ...c,
-                                              options: c.options?.filter((_, oi) => oi !== optIdx) || []
-                                            } : c)
-                                          } : p))}>
-                                            ×
-                                          </Button>
-                                        </div>
-                                      ))}
-                                      <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={() => {
-                                          const newOptId = `opt-${Date.now()}-${Math.random()}`;
-                                          setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                            ...p,
-                                            customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                              ...c,
-                                              options: [...(c.options || []), { id: newOptId, label: '', price: 0 }]
-                                            } : c)
-                                          } : p));
-                                        }}
-                                      >
-                                        + افزودن گزینه
-                                      </Button>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
+                                ))}
+                              </div>
                               <Button
                                 variant="secondary"
                                 size="sm"
@@ -1227,24 +1109,25 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                                     }]
                                   } : p));
                                 }}
+                                className="mt-1 text-xs"
                               >
-                                + افزودن سفارشی‌سازی به این ورژن
+                                + سفارشی‌سازی
                               </Button>
                             </div>
-                          </div>
+                          )}
                         </div>
                       ))}
-                      <div className="flex gap-2 mt-2">
+                      <div className="flex gap-2">
                         <input
                           ref={newVariantNameRef}
-                          placeholder="نام ورژن (مثال: قهوه، دوروپ)"
-                          className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                          placeholder="نام ورژن جدید"
+                          className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-sm"
                         />
                         <input
                           ref={newVariantPriceRef}
                           type="number"
-                          placeholder="تغییر قیمت (مثال: +5000 یا -2000)"
-                          className="w-40 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                          placeholder="±قیمت"
+                          className="w-28 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-sm"
                         />
                         <Button
                           variant="primary"
@@ -1263,7 +1146,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                             addToast(`ورژن "${name}" اضافه شد`, 'success');
                           }}
                         >
-                          + افزودن ورژن
+                          + ورژن
                         </Button>
                       </div>
                     </div>
@@ -1302,7 +1185,15 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                 {cartArray.length === 0 ? (
                   <p className="text-center text-secondary py-8">سبد خرید خالی است</p>
                 ) : (
-                  cartArray.map((item, idx) => (
+                  cartArray.map((item, idx) => {
+                    // Extract variant name from item.name if it exists
+                    const variantMatch = item.name.match(/^(.+?)\s*\((.+?)\)/);
+                    const baseName = variantMatch ? variantMatch[1] : item.name;
+                    const variantName = variantMatch ? variantMatch[2] : null;
+                    const customizationMatch = item.name.match(/\[(.+?)\]/);
+                    const customizationsText = customizationMatch ? customizationMatch[1] : null;
+
+                    return (
                       <div
                         key={item.key}
                         className="bg-surface p-3 rounded-lg border border-border hover-lift animate-fade-in transition-all"
@@ -1310,8 +1201,14 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                       >
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex-1">
-                            <p className="font-semibold text-primary text-sm">{item.name}</p>
-                            <CurrencyDisplay value={item.unitPrice} className="text-xs text-secondary" />
+                            <p className="font-semibold text-primary text-sm">{baseName}</p>
+                            {variantName && (
+                              <p className="text-xs text-accent font-medium mt-0.5">ورژن: {variantName}</p>
+                            )}
+                            {customizationsText && (
+                              <p className="text-xs text-secondary mt-0.5">{customizationsText}</p>
+                            )}
+                            <CurrencyDisplay value={item.unitPrice} className="text-xs text-secondary mt-1" />
                           </div>
                           <button
                             onClick={() => handleRemoveFromCart(item.key)}
@@ -1342,7 +1239,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                           <CurrencyDisplay value={item.quantity * item.unitPrice} className="font-bold text-primary" />
                         </div>
                       </div>
-                    ))
+                    );
+                  })
                 )}
               </div>
 
@@ -1411,7 +1309,12 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
             )}
 
             {/* RECENT TRANSACTIONS */}
-            <RecentTransactionsCard store={store} />
+            <RecentTransactionsCard
+              store={store}
+              onEdit={(trans) => setEditingTransaction(trans)}
+              onDelete={(transId) => setDeleteTransactionConfirm(transId)}
+              onPrint={(trans) => printReceipt(trans)}
+            />
           </div>
         </div>
       </main>
@@ -1850,9 +1753,30 @@ const RecentTransactionsCard: React.FC<{
                 <span className="text-secondary">{toJalaliDateString(trans.date)}</span>
                 <CurrencyDisplay value={trans.totalAmount} className="font-semibold text-primary" />
               </div>
-              <p className="text-secondary mb-2">
-                {trans.items.length} کالا • {trans.paymentMethod}
-              </p>
+              <div className="mb-2 space-y-1">
+                <p className="text-secondary">
+                  {trans.items.length} کالا • {trans.paymentMethod}
+                </p>
+                {/* Show items with variants clearly */}
+                <div className="text-xs text-secondary/80 space-y-0.5 max-h-20 overflow-y-auto">
+                  {trans.items.map((item, idx) => {
+                    const variantMatch = item.name.match(/^(.+?)\s*\((.+?)\)/);
+                    const baseName = variantMatch ? variantMatch[1] : item.name;
+                    const variantName = variantMatch ? variantMatch[2] : null;
+                    const customizationMatch = item.name.match(/\[(.+?)\]/);
+                    const customizationsText = customizationMatch ? customizationMatch[1] : null;
+
+                    return (
+                      <div key={idx} className="truncate">
+                        <span className="font-medium">{baseName}</span>
+                        {variantName && <span className="text-accent"> ({variantName})</span>}
+                        {customizationsText && <span className="text-secondary/70"> [{customizationsText}]</span>}
+                        <span className="text-secondary/60"> ×{item.quantity}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 {onPrint && (
                   <button
