@@ -31,7 +31,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   // Customization modal state
   const [modalItem, setModalItem] = useState<POSItem | null>(null);
   const [modalQty, setModalQty] = useState<number>(1);
-  const [modalVariantId, setModalVariantId] = useState<string | undefined>(undefined);
+  const [modalVariants, setModalVariants] = useState<Record<string, string | number | { optionId: string; amount: number }>>({});
   const [modalCustomizations, setModalCustomizations] = useState<Record<string, string | number | { optionId: string; amount: number }>>({});
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Cash);
   const [splitPayments, setSplitPayments] = useState<Array<{ method: PaymentMethod; amount: number }>>([]);
@@ -39,7 +39,13 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const [discountAmount, setDiscountAmount] = useState(0);
   const [showNewItemForm, setShowNewItemForm] = useState(false);
   const [newItemForm, setNewItemForm] = useState({ name: '', category: '', sellPrice: 0 });
-  const [newItemVariants, setNewItemVariants] = useState<Array<{ id: string; name: string; priceModifier: number }>>([]);
+  const [newItemVariants, setNewItemVariants] = useState<Array<{
+    id: string;
+    name: string;
+    type: 'choice' | 'number' | 'text';
+    options?: { id: string; name: string; label?: string; price?: number; priceModifier?: number; isCustomAmount?: boolean; unit?: string; pricePerUnit?: number }[];
+    priceModifier?: number;
+  }>>([]);
   const [editingItem, setEditingItem] = useState<POSItem | null>(null);
   const [deleteItemConfirm, setDeleteItemConfirm] = useState<string | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<SellTransaction | null>(null);
@@ -84,40 +90,12 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     }
   }, [posCategories, selectedCategory]);
 
-  // Expand items with variants into separate display items
-  const expandedItems = useMemo(() => {
+  const currentCategoryItems = useMemo(() => {
     const items = selectedCategory ? getPOSItemsByCategory(selectedCategory) : posItems;
-    const filtered = !itemSearch.trim()
-      ? items
-      : items.filter(i => i.name.toLowerCase().includes(itemSearch.trim().toLowerCase()) || i.category.toLowerCase().includes(itemSearch.trim().toLowerCase()));
-
-    // Expand items with variants
-    const expanded: Array<POSItem & { variantId?: string; displayName?: string; displayPrice?: number }> = [];
-    filtered.forEach(item => {
-      if (item.variants && item.variants.length > 0) {
-        // Add base item
-        expanded.push({
-          ...item,
-          displayName: item.name,
-          displayPrice: item.sellPrice,
-        });
-        // Add each variant as a separate item
-        item.variants.forEach(variant => {
-          expanded.push({
-            ...item,
-            variantId: variant.id,
-            displayName: `${item.name} (${variant.name})`,
-            displayPrice: item.sellPrice + variant.priceModifier,
-          });
-        });
-      } else {
-        expanded.push(item);
-      }
-    });
-    return expanded;
+    if (!itemSearch.trim()) return items;
+    const q = itemSearch.trim().toLowerCase();
+    return items.filter(i => i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q));
   }, [selectedCategory, getPOSItemsByCategory, posItems, itemSearch]);
-
-  const currentCategoryItems = expandedItems;
   const frequentItems = getFrequentPOSItems(12);
 
   // Convert cart Map to array with keys for stable React keys
@@ -125,24 +103,48 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const cartTotal = cartArray.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
   const finalTotal = Math.max(0, cartTotal - discountAmount);
 
-  const handleAddToCart = (posItem: POSItem, opts?: { variantId?: string; customizations?: Record<string, string | number | { optionId: string; amount: number }>; quantity?: number }) => {
+  const handleAddToCart = (posItem: POSItem, opts?: { variants?: Record<string, string | number | { optionId: string; amount: number }>; customizations?: Record<string, string | number | { optionId: string; amount: number }>; quantity?: number }) => {
     setCart(prev => {
       const newCart = new Map(prev);
 
-      // Include variant in key if selected
-      const variantKey = opts?.variantId ? `::variant:${opts.variantId}` : '';
-      const customizationKey = opts && Object.keys(opts.customizations || {}).length > 0
-        ? `::${JSON.stringify(opts.customizations || {})}`
+      // Include variants and customizations in key
+      const variantKey = opts && opts.variants && Object.keys(opts.variants).length > 0
+        ? `::variants:${JSON.stringify(opts.variants)}`
+        : '';
+      const customizationKey = opts && opts.customizations && Object.keys(opts.customizations).length > 0
+        ? `::customizations:${JSON.stringify(opts.customizations)}`
         : '';
       const key = `${posItem.id}${variantKey}${customizationKey}`;
 
       const existing = newCart.get(key);
 
-      // Get selected variant
-      const selectedVariant = opts?.variantId ? posItem.variants?.find(v => v.id === opts.variantId) : null;
-      const variantPriceModifier = selectedVariant?.priceModifier || 0;
+      // Calculate price from variants (same logic as customizations)
+      const variantPrice = (opts?.variants && Object.keys(opts.variants).length > 0 && posItem.variants)
+        ? Object.entries(opts!.variants!).reduce((s, [k, v]) => {
+            const variant = posItem.variants!.find(c => c.name === k);
+            if (!variant) return s;
 
-      // Calculate price from base item customizations
+            // If variant has options, find the selected option
+            if (variant.options && variant.options.length > 0) {
+              const optionId = typeof v === 'string' ? v : (typeof v === 'object' && v !== null && 'optionId' in v ? (v as { optionId: string }).optionId : String(v));
+              const selectedOption = variant.options.find(opt => opt.id === optionId);
+              if (selectedOption) {
+                // If it's a custom amount option, calculate based on amount
+                if (selectedOption.isCustomAmount && selectedOption.pricePerUnit && typeof v === 'object' && v !== null && 'amount' in v) {
+                  const amount = (v as { amount: number }).amount || 0;
+                  return s + (selectedOption.pricePerUnit * amount);
+                }
+                // Use price if available, otherwise fall back to priceModifier
+                return s + (selectedOption.price ?? selectedOption.priceModifier ?? 0);
+              }
+            }
+
+            // Fallback to priceModifier for legacy variants
+            return s + (variant?.priceModifier || 0) * (typeof v === 'number' ? Number(v) : 1);
+          }, 0)
+        : 0;
+
+      // Calculate price from customizations
       const customizationPrice = (opts?.customizations && Object.keys(opts.customizations).length > 0 && posItem.customizations)
         ? Object.entries(opts!.customizations!).reduce((s, [k, v]) => {
             const cust = posItem.customizations!.find(c => c.name === k);
@@ -168,12 +170,37 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
           }, 0)
         : 0;
 
-      const unitPrice = posItem.sellPrice + variantPriceModifier + customizationPrice;
+      const unitPrice = posItem.sellPrice + variantPrice + customizationPrice;
 
-      // Build display name with variant and customizations
+      // Build display name with variants and customizations
       let displayName = posItem.name;
-      if (selectedVariant) {
-        displayName += ` (${selectedVariant.name})`;
+      if (opts?.variants && Object.keys(opts.variants).length > 0) {
+        const variantParts: string[] = [];
+        Object.entries(opts.variants).forEach(([variantName, variantValue]) => {
+          const variant = posItem.variants?.find(v => v.name === variantName);
+          if (variant && variant.options) {
+            if (typeof variantValue === 'object' && 'optionId' in variantValue) {
+              const opt = variant.options.find(o => o.id === variantValue.optionId);
+              if (opt) {
+                let optLabel = opt.label || opt.name;
+                if (opt.isCustomAmount && variantValue.amount) {
+                  optLabel += ` ${variantValue.amount}${opt.unit || ''}`;
+                }
+                variantParts.push(optLabel);
+              }
+            } else if (typeof variantValue === 'string') {
+              const opt = variant.options.find(o => o.id === variantValue);
+              if (opt) {
+                variantParts.push(opt.label || opt.name);
+              }
+            }
+          } else if (variantValue) {
+            variantParts.push(`${variantName}: ${variantValue}`);
+          }
+        });
+        if (variantParts.length > 0) {
+          displayName += ` (${variantParts.join(', ')})`;
+        }
       }
       if (opts?.customizations && Object.keys(opts.customizations).length > 0) {
         const custParts: string[] = [];
@@ -225,7 +252,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const openCustomizationModal = (item: POSItem) => {
     setModalItem(item);
     setModalQty(1);
-    setModalVariantId(undefined);
+    setModalVariants({});
     setModalCustomizations({});
   };
 
@@ -247,14 +274,14 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const confirmCloseModal = () => {
     setModalItem(null);
     setModalQty(1);
-    setModalVariantId(undefined);
+    setModalVariants({});
     setModalCustomizations({});
     setCancelModalConfirm(false);
   };
 
   const confirmModalAdd = () => {
     if (!modalItem) return;
-    handleAddToCart(modalItem, { variantId: modalVariantId, customizations: modalCustomizations, quantity: modalQty });
+    handleAddToCart(modalItem, { variants: modalVariants, customizations: modalCustomizations, quantity: modalQty });
     closeModal();
   };
 
@@ -546,7 +573,22 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       name: newItemForm.name,
       category: newItemForm.category,
       sellPrice: newItemForm.sellPrice,
-      variants: newItemVariants.length > 0 ? newItemVariants : undefined,
+      variants: newItemVariants.length > 0 ? newItemVariants.map(v => ({
+        id: v.id,
+        name: v.name,
+        type: v.type,
+        options: v.options?.map(opt => ({
+          id: opt.id,
+          name: opt.name,
+          label: opt.label,
+          price: opt.price,
+          priceModifier: opt.priceModifier,
+          isCustomAmount: opt.isCustomAmount,
+          unit: opt.unit,
+          pricePerUnit: opt.pricePerUnit
+        })),
+        priceModifier: v.priceModifier
+      })) : undefined,
       customizations: newItemCustomizations.length > 0 ? newItemCustomizations.map(c => ({
         id: c.id,
         name: c.name,
@@ -577,7 +619,22 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const handleEditItem = (item: POSItem) => {
     setEditingItem(item);
     setNewItemForm({ name: item.name, category: item.category, sellPrice: item.sellPrice });
-    setNewItemVariants(item.variants?.map(v => ({ id: v.id, name: v.name, priceModifier: v.priceModifier })) || []);
+    setNewItemVariants(item.variants?.map(v => ({
+      id: v.id,
+      name: v.name,
+      type: v.type,
+      options: v.options?.map(opt => ({
+        id: opt.id,
+        name: opt.name,
+        label: opt.label || opt.name,
+        price: opt.price,
+        priceModifier: opt.priceModifier,
+        isCustomAmount: opt.isCustomAmount,
+        unit: opt.unit,
+        pricePerUnit: opt.pricePerUnit
+      })),
+      priceModifier: v.priceModifier || 0
+    })) || []);
     setNewItemCustomizations(item.customizations?.map(c => ({
       id: c.id,
       name: c.name,
@@ -611,7 +668,22 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       name: newItemForm.name,
       category: newItemForm.category,
       sellPrice: newItemForm.sellPrice,
-      variants: newItemVariants.length > 0 ? newItemVariants : undefined,
+      variants: newItemVariants.length > 0 ? newItemVariants.map(v => ({
+        id: v.id,
+        name: v.name,
+        type: v.type,
+        options: v.options?.map(opt => ({
+          id: opt.id,
+          name: opt.name,
+          label: opt.label,
+          price: opt.price,
+          priceModifier: opt.priceModifier,
+          isCustomAmount: opt.isCustomAmount,
+          unit: opt.unit,
+          pricePerUnit: opt.pricePerUnit
+        })),
+        priceModifier: v.priceModifier
+      })) : undefined,
       customizations: newItemCustomizations.length > 0 ? newItemCustomizations.map(c => ({
         id: c.id,
         name: c.name,
@@ -1112,9 +1184,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                         <button
                           onClick={() => {
                             // If this is a variant item, add directly with the variant selected
-                            if ((item as any).variantId) {
-                              handleAddToCart(item, { variantId: (item as any).variantId });
-                            } else if (item.customizations && item.customizations.length > 0) {
+                            if ((item.variants && item.variants.length > 0) || (item.customizations && item.customizations.length > 0)) {
                               // If item has customizations, open modal
                               openCustomizationModal(item);
                             } else {
@@ -1209,33 +1279,140 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                     </div>
                   </div>
 
-                  {/* VARIANTS EDITOR */}
+                  {/* VARIANTS EDITOR (same structure as customizations) */}
                   <div className="mt-4">
                     <label className="text-sm font-medium text-primary block mb-2">
                       انواع/ورژن‌ها (اختیاری)
-                      <span className="text-xs text-secondary block mt-1">مثال: کوچک، متوسط، بزرگ</span>
+                      <span className="text-xs text-secondary block mt-1">مثال: نوع قهوه، شربت، مقدار شربت</span>
                     </label>
-                    <div className="space-y-2">
+                    <div className="space-y-4">
                       {newItemVariants.map((variant, variantIdx) => (
-                        <div key={variant.id} className="flex gap-2 items-center p-2 bg-background rounded-lg border border-border">
-                          <input
-                            type="text"
-                            value={variant.name}
-                            onChange={e => setNewItemVariants(prev => prev.map((v, i) => i === variantIdx ? { ...v, name: e.target.value } : v))}
-                            className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg text-sm"
-                            placeholder="نام نوع (مثال: بزرگ)"
-                          />
-                          <input
-                            type="number"
-                            value={variant.priceModifier || ''}
-                            onChange={e => setNewItemVariants(prev => prev.map((v, i) => i === variantIdx ? { ...v, priceModifier: parseFloat(e.target.value) || 0 } : v))}
-                            className="w-32 px-3 py-2 bg-surface border border-border rounded-lg text-sm"
-                            placeholder="تغییر قیمت"
-                          />
-                          <span className="text-xs text-secondary">ریال</span>
-                          <Button variant="danger" size="sm" onClick={() => setNewItemVariants(prev => prev.filter((_, i) => i !== variantIdx))}>
-                            ×
-                          </Button>
+                        <div key={variant.id} className="p-3 bg-background rounded-lg border border-border">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex-1">
+                              <input
+                                value={variant.name}
+                                onChange={e => setNewItemVariants(prev => prev.map((v, i) => i === variantIdx ? { ...v, name: e.target.value } : v))}
+                                className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                                placeholder="نام نوع (مثال: نوع قهوه)"
+                              />
+                            </div>
+                            <select
+                              value={variant.type}
+                              onChange={e => setNewItemVariants(prev => prev.map((v, i) => i === variantIdx ? { ...v, type: e.target.value as 'choice' | 'number' | 'text' } : v))}
+                              className="ml-2 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                            >
+                              <option value="choice">انتخابی</option>
+                              <option value="number">عدد</option>
+                              <option value="text">متن</option>
+                            </select>
+                            <Button variant="danger" size="sm" onClick={() => setNewItemVariants(prev => prev.filter((_, i) => i !== variantIdx))} className="ml-2">
+                              حذف
+                            </Button>
+                          </div>
+
+                          {/* Options for choice type */}
+                          {variant.type === 'choice' && (
+                            <div className="mt-3 space-y-2">
+                              <label className="text-xs text-secondary block mb-1">گزینه‌ها:</label>
+                              {variant.options?.map((opt, optIdx) => (
+                                <div key={opt.id} className="flex gap-2 items-center">
+                                  <input
+                                    value={opt.label || opt.name || ''}
+                                    onChange={e => {
+                                      const newValue = e.target.value;
+                                      setNewItemVariants(prev => prev.map((v, i) =>
+                                        i === variantIdx ? {
+                                          ...v,
+                                          options: v.options?.map((o, oi) => oi === optIdx ? { ...o, label: newValue, name: o.name || newValue } : o) || []
+                                        } : v
+                                      ));
+                                    }}
+                                    className="flex-1 px-2 py-1 bg-surface border border-border rounded text-sm"
+                                    placeholder="برچسب (مثال: Espresso)"
+                                  />
+                                  <input
+                                    type="number"
+                                    value={String(opt.price ?? opt.priceModifier ?? 0)}
+                                    onChange={e => setNewItemVariants(prev => prev.map((v, i) =>
+                                      i === variantIdx ? {
+                                        ...v,
+                                        options: v.options?.map((o, oi) => oi === optIdx ? { ...o, price: parseFloat(e.target.value) || 0 } : o) || []
+                                      } : v
+                                    ))}
+                                    className="w-24 px-2 py-1 bg-surface border border-border rounded text-sm"
+                                    placeholder="قیمت"
+                                  />
+                                  <label className="flex items-center gap-1 text-xs">
+                                    <input
+                                      type="checkbox"
+                                      checked={opt.isCustomAmount || false}
+                                      onChange={e => setNewItemVariants(prev => prev.map((v, i) =>
+                                        i === variantIdx ? {
+                                          ...v,
+                                          options: v.options?.map((o, oi) => oi === optIdx ? { ...o, isCustomAmount: e.target.checked } : o) || []
+                                        } : v
+                                      ))}
+                                      className="rounded"
+                                    />
+                                    مقدار سفارشی
+                                  </label>
+                                  {opt.isCustomAmount && (
+                                    <>
+                                      <input
+                                        type="text"
+                                        value={opt.unit || ''}
+                                        onChange={e => setNewItemVariants(prev => prev.map((v, i) =>
+                                          i === variantIdx ? {
+                                            ...v,
+                                            options: v.options?.map((o, oi) => oi === optIdx ? { ...o, unit: e.target.value } : o) || []
+                                          } : v
+                                        ))}
+                                        className="w-20 px-2 py-1 bg-surface border border-border rounded text-sm"
+                                        placeholder="واحد"
+                                      />
+                                      <input
+                                        type="number"
+                                        value={String(opt.pricePerUnit || 0)}
+                                        onChange={e => setNewItemVariants(prev => prev.map((v, i) =>
+                                          i === variantIdx ? {
+                                            ...v,
+                                            options: v.options?.map((o, oi) => oi === optIdx ? { ...o, pricePerUnit: parseFloat(e.target.value) || 0 } : o) || []
+                                          } : v
+                                        ))}
+                                        className="w-24 px-2 py-1 bg-surface border border-border rounded text-sm"
+                                        placeholder="قیمت/واحد"
+                                      />
+                                    </>
+                                  )}
+                                  <Button variant="danger" size="sm" onClick={() => setNewItemVariants(prev => prev.map((v, i) =>
+                                    i === variantIdx ? {
+                                      ...v,
+                                      options: v.options?.filter((_, oi) => oi !== optIdx) || []
+                                    } : v
+                                  ))}>
+                                    ×
+                                  </Button>
+                                </div>
+                              ))}
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  const newOptId = `opt-${Date.now()}-${Math.random()}`;
+                                  setNewItemVariants(prev => prev.map((v, i) =>
+                                    i === variantIdx ? {
+                                      ...v,
+                                      options: [...(v.options || []), { id: newOptId, name: '', label: '', price: 0 }]
+                                    } : v
+                                  ));
+                                }}
+                                fullWidth
+                              >
+                                + افزودن گزینه
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       ))}
                       <Button
@@ -1245,7 +1422,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                           setNewItemVariants(prev => [...prev, {
                             id: `variant-${Date.now()}-${Math.random()}`,
                             name: '',
-                            priceModifier: 0
+                            type: 'choice',
+                            options: []
                           }]);
                         }}
                         fullWidth
@@ -1817,37 +1995,119 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
               </button>
             </div>
             <div className="space-y-4">
-              {/* Variant Selection */}
+              {/* Variants (same structure as customizations) */}
               {modalItem.variants && modalItem.variants.length > 0 && (
-                <div className="space-y-2 pb-2 border-b border-border">
-                  <label className="text-sm font-medium text-primary block">نوع/ورژن</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setModalVariantId(undefined)}
-                      className={`px-3 py-2 rounded-lg border-2 transition-colors text-sm text-right ${
-                        modalVariantId === undefined
-                          ? 'bg-accent text-accent-text border-accent'
-                          : 'bg-surface text-primary border-border hover:bg-border'
-                      }`}
-                    >
-                      پایه ({modalItem.sellPrice.toLocaleString()} ریال)
-                    </button>
-                    {modalItem.variants.map(variant => (
-                      <button
-                        key={variant.id}
-                        type="button"
-                        onClick={() => setModalVariantId(variant.id)}
-                        className={`px-3 py-2 rounded-lg border-2 transition-colors text-sm text-right ${
-                          modalVariantId === variant.id
-                            ? 'bg-accent text-accent-text border-accent'
-                            : 'bg-surface text-primary border-border hover:bg-border'
-                        }`}
-                      >
-                        {variant.name} ({(modalItem.sellPrice + variant.priceModifier).toLocaleString()} ریال)
-                      </button>
-                    ))}
-                  </div>
+                <div className="space-y-4 pt-2 border-t border-border">
+                  <label className="text-sm font-medium text-primary block">انواع/ورژن‌ها</label>
+                  {modalItem.variants.map(v => (
+                    <div key={v.id || v.name} className="space-y-2">
+                      <label className="text-sm font-medium text-primary block">{v.name}</label>
+
+                      {v.type === 'choice' && v.options && v.options.length > 0 ? (
+                        <div className="space-y-2">
+                          {v.options.map(opt => {
+                            const isSelected = modalVariants[v.name] === opt.id ||
+                              (typeof modalVariants[v.name] === 'object' && (modalVariants[v.name] as any).optionId === opt.id);
+
+                            return (
+                              <div key={opt.id} className="space-y-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (opt.isCustomAmount) {
+                                      // For custom amount, store option ID and allow amount input
+                                      setModalVariants(prev => ({
+                                        ...prev,
+                                        [v.name]: { optionId: opt.id, amount: (prev[v.name] as any)?.amount || 0 }
+                                      }));
+                                    } else {
+                                      // Regular option, just store the option ID
+                                      setModalVariants(prev => ({ ...prev, [v.name]: opt.id }));
+                                    }
+                                  }}
+                                  className={`w-full px-3 py-2 rounded-lg border-2 transition-colors text-sm text-right ${
+                                    isSelected
+                                      ? 'bg-accent text-accent-text border-accent'
+                                      : 'bg-surface text-primary border-border hover:bg-border'
+                                  }`}
+                                >
+                                  <div className="flex justify-between items-center">
+                                    <span>{opt.label || opt.name}</span>
+                                    {(opt.price !== undefined && opt.price !== 0) || (opt.priceModifier !== undefined && opt.priceModifier !== 0) ? (
+                                      <span className="text-xs">
+                                        {((opt.price ?? opt.priceModifier ?? 0) > 0 ? '+' : '')}{(opt.price ?? opt.priceModifier ?? 0).toLocaleString()} ریال
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </button>
+
+                                {opt.isCustomAmount && isSelected && (() => {
+                                  const customValue = modalVariants[v.name];
+                                  const amount = typeof customValue === 'object' && customValue !== null && 'amount' in customValue
+                                    ? (customValue as { amount: number }).amount
+                                    : 0;
+                                  return (
+                                    <div className="flex gap-2 items-center mt-1 pr-2">
+                                      <input
+                                        type="number"
+                                        value={String(amount)}
+                                        onChange={e => setModalVariants(prev => ({
+                                          ...prev,
+                                          [v.name]: {
+                                            optionId: opt.id,
+                                            amount: parseFloat(e.target.value) || 0
+                                          }
+                                        }))}
+                                        className="flex-1 px-2 py-1 bg-surface border border-border rounded text-sm"
+                                        placeholder={`مقدار (${opt.unit || 'واحد'})`}
+                                        min="0"
+                                      />
+                                      {opt.pricePerUnit && (
+                                        <span className="text-xs text-secondary">
+                                          {(opt.pricePerUnit * amount).toLocaleString()} ریال
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : v.type === 'number' ? (
+                        <input
+                          type="number"
+                          value={String(modalVariants[v.name] || 0)}
+                          onChange={e => setModalVariants(prev => ({ ...prev, [v.name]: parseFloat(e.target.value) || 0 }))}
+                          className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                          placeholder="عدد"
+                        />
+                      ) : v.type === 'text' ? (
+                        <input
+                          type="text"
+                          value={String(modalVariants[v.name] || '')}
+                          onChange={e => setModalVariants(prev => ({ ...prev, [v.name]: e.target.value }))}
+                          className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                          placeholder="متن"
+                        />
+                      ) : (
+                        // Legacy: fallback to number input with priceModifier
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={String(modalVariants[v.name] || 0)}
+                            onChange={e => setModalVariants(prev => ({ ...prev, [v.name]: parseFloat(e.target.value) || 0 }))}
+                            className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                          />
+                          {v.priceModifier && v.priceModifier !== 0 && (
+                            <span className="text-xs text-secondary">
+                              {(v.priceModifier * (Number(modalVariants[v.name]) || 0)).toLocaleString()} ریال
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
 
