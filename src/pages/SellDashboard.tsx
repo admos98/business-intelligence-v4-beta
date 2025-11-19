@@ -84,12 +84,40 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     }
   }, [posCategories, selectedCategory]);
 
-  const currentCategoryItems = useMemo(() => {
+  // Expand items with variants into separate display items
+  const expandedItems = useMemo(() => {
     const items = selectedCategory ? getPOSItemsByCategory(selectedCategory) : posItems;
-    if (!itemSearch.trim()) return items;
-    const q = itemSearch.trim().toLowerCase();
-    return items.filter(i => i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q));
+    const filtered = !itemSearch.trim()
+      ? items
+      : items.filter(i => i.name.toLowerCase().includes(itemSearch.trim().toLowerCase()) || i.category.toLowerCase().includes(itemSearch.trim().toLowerCase()));
+
+    // Expand items with variants
+    const expanded: Array<POSItem & { variantId?: string; displayName?: string; displayPrice?: number }> = [];
+    filtered.forEach(item => {
+      if (item.variants && item.variants.length > 0) {
+        // Add base item
+        expanded.push({
+          ...item,
+          displayName: item.name,
+          displayPrice: item.sellPrice,
+        });
+        // Add each variant as a separate item
+        item.variants.forEach(variant => {
+          expanded.push({
+            ...item,
+            variantId: variant.id,
+            displayName: `${item.name} (${variant.name})`,
+            displayPrice: item.sellPrice + variant.priceModifier,
+          });
+        });
+      } else {
+        expanded.push(item);
+      }
+    });
+    return expanded;
   }, [selectedCategory, getPOSItemsByCategory, posItems, itemSearch]);
+
+  const currentCategoryItems = expandedItems;
   const frequentItems = getFrequentPOSItems(12);
 
   // Convert cart Map to array with keys for stable React keys
@@ -1016,8 +1044,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                     <button
                       key={item.id}
                       onClick={() => {
-                        // Always open customization modal if item has customizations, otherwise add directly
-                        if (item.customizations && item.customizations.length > 0) {
+                        // Always open customization modal if item has variants or customizations, otherwise add directly
+                        if ((item.variants && item.variants.length > 0) || (item.customizations && item.customizations.length > 0)) {
                           openCustomizationModal(item);
                         } else {
                           handleAddToCart(item);
@@ -1083,10 +1111,14 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                       >
                         <button
                           onClick={() => {
-                            // Always open customization modal if item has customizations, otherwise add directly
-                            if (item.customizations && item.customizations.length > 0) {
+                            // If this is a variant item, add directly with the variant selected
+                            if ((item as any).variantId) {
+                              handleAddToCart(item, { variantId: (item as any).variantId });
+                            } else if (item.customizations && item.customizations.length > 0) {
+                              // If item has customizations, open modal
                               openCustomizationModal(item);
                             } else {
+                              // Otherwise add directly
                               handleAddToCart(item);
                             }
                           }}
@@ -1096,8 +1128,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                               : 'bg-surface border-border hover:border-accent hover:bg-accent/5'
                           }`}
                         >
-                          <div className="font-bold text-base text-primary mb-1 truncate">{item.name}</div>
-                          <div className="text-sm text-accent font-semibold"><CurrencyDisplay value={item.sellPrice} /></div>
+                          <div className="font-bold text-base text-primary mb-1 truncate">{(item as any).displayName || item.name}</div>
+                          <div className="text-sm text-accent font-semibold"><CurrencyDisplay value={(item as any).displayPrice ?? item.sellPrice} /></div>
                           {inCart && (
                             <div className="text-xs text-accent mt-1">
                               {cartArray.filter(c => c.posItemId === item.id).reduce((sum, c) => sum + c.quantity, 0)}×
