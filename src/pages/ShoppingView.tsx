@@ -64,9 +64,9 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
 
   const knownItemNames = useMemo(() => getKnownItemNames(), [lists, getKnownItemNames]);
 
-  const onUpdateList = (updatedList: ShoppingList) => {
+  const onUpdateList = useCallback((updatedList: ShoppingList) => {
     updateList(listId, updatedList);
-  };
+  }, [listId, updateList]);
 
   const handleNewItemNameChange = (name: string) => {
     setNewItemName(name);
@@ -196,7 +196,7 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
     setSelectedItemIds(newSelection);
   };
 
-  const boughtItems = list ? list.items.filter(item => item.status === ItemStatus.Bought) : [];
+  const boughtItems = useMemo(() => list ? list.items.filter(item => item.status === ItemStatus.Bought) : [], [list]);
   const totalCost = useMemo(() => boughtItems.reduce((sum, item) => sum + (item.paidPrice || 0), 0), [boughtItems]);
   const totalDue = useMemo(() => boughtItems.filter(i => i.paymentStatus === PaymentStatus.Due).reduce((sum, item) => sum + (item.paidPrice || 0), 0), [boughtItems]);
 
@@ -322,8 +322,7 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
       addToast(t.exportJsonSuccess, 'success');
   }, [list, vendorMap, addToast]);
 
-
-  const pendingItems = list ? list.items.filter(item => item.status === ItemStatus.Pending) : [];
+  const pendingItems = useMemo(() => list ? list.items.filter(item => item.status === ItemStatus.Pending) : [], [list]);
 
   const groupItemsByCategory = (items: ShoppingItem[]): Record<string, ShoppingItem[]> => {
     return items.reduce((acc, item) => {
