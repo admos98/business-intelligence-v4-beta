@@ -275,7 +275,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
                         {(financialData.sell.totalRevenue / Math.max(financialData.buy.totalSpend, 1)).toFixed(2)}x
                       </p>
                       <p className="text-xs text-secondary">
-                        برای هر ۱ تومان هزینه {((financialData.sell.totalRevenue / Math.max(financialData.buy.totalSpend, 1)) - 1).toFixed(2)} تومان درآمد
+                        برای هر ۱ تومان هزینه {((financialData.sell.totalRevenue / Math.max(financialData.buy.totalSpend, 1)) - 1).toFixed(2)} تومان سود خالص
                       </p>
                     </div>
                   </div>

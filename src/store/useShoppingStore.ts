@@ -84,6 +84,7 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   getLatestPricePerUnit: (name: string, unit: Unit) => number | undefined;
   getLatestPurchaseInfo: (name: string, unit: Unit) => { pricePerUnit?: number, vendorId?: string, lastAmount?: number };
   getSmartSuggestions: () => SmartSuggestion[];
+  getSmartItemSuggestions: (query: string, limit?: number) => Array<{ name: string; unit: Unit; category: string; score: number; reason?: string }>;
   getPendingPayments: () => PendingPaymentItem[];
   getRecentPurchases: (count: number) => RecentPurchaseItem[];
   getExpenseForecast: () => { daily: number, monthly: number } | null;
@@ -1060,13 +1061,19 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const recentPurchases = get().getRecentPurchases(100);
         const recentItemSet = new Set(recentPurchases.map(p => `${p.name}-${p.unit}`));
 
-        // Get all unique item names for fuzzy matching
+        // Get all unique item names for fuzzy matching (including POS items)
         const allItemNames = new Set<string>();
         allKnownItems.forEach(item => allItemNames.add(item.name));
         get().lists.forEach(list => {
           list.items.forEach(item => allItemNames.add(item.name));
         });
         Object.keys(get().itemInfoMap).forEach(name => allItemNames.add(name));
+        // Include POS items in the search
+        get().posItems.forEach(posItem => {
+          if (get().itemInfoMap[posItem.name]) {
+            allItemNames.add(posItem.name);
+          }
+        });
 
         // Find fuzzy matches
         const fuzzyResults = findFuzzyMatches(normalizedQuery, Array.from(allItemNames), {
@@ -1135,27 +1142,8 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           }
         });
 
-        // Also check POS items for suggestions (if they map to buy items)
-        const posItems = get().posItems;
-        posItems.forEach(posItem => {
-          const similarity = calculateSimilarity(normalizedQuery, posItem.name);
-          if (similarity > 0.5) {
-            const info = get().itemInfoMap[posItem.name];
-            if (info) {
-              const key = `${posItem.name}-${info.unit}`;
-              if (!seen.has(key)) {
-                seen.add(key);
-                suggestions.push({
-                  name: posItem.name,
-                  unit: info.unit,
-                  category: info.category,
-                  score: similarity * 0.8,
-                  reason: 'کالای فروشگاهی',
-                });
-              }
-            }
-          }
-        });
+        // POS items are now included in the fuzzy match results above
+        // No need for separate processing
 
         return suggestions
           .sort((a, b) => b.score - a.score)

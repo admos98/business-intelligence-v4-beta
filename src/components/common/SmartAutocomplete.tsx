@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Unit } from '../../../shared/types';
 import { useShoppingStore } from '../../store/useShoppingStore';
-import { findFuzzyMatches } from '../../lib/fuzzyMatch';
 
 interface SmartAutocompleteProps {
   value: string;
@@ -24,7 +23,7 @@ const SmartAutocomplete: React.FC<SmartAutocompleteProps> = ({
   showSuggestions = true,
   maxSuggestions = 8,
 }) => {
-  const { getSmartItemSuggestions, getItemInfo, getKnownItemNames, getLatestPricePerUnit } = useShoppingStore();
+  const { getSmartItemSuggestions, getItemInfo, getLatestPricePerUnit } = useShoppingStore();
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -37,8 +36,6 @@ const SmartAutocomplete: React.FC<SmartAutocompleteProps> = ({
     }
     return getSmartItemSuggestions(value, maxSuggestions);
   }, [value, getSmartItemSuggestions, maxSuggestions, showSuggestions]);
-
-  const knownItemNames = useMemo(() => getKnownItemNames(), [getKnownItemNames]);
 
   useEffect(() => {
     if (value.trim() && suggestions.length > 0) {
@@ -83,15 +80,22 @@ const SmartAutocomplete: React.FC<SmartAutocompleteProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!isOpen || suggestions.length === 0) {
       if (e.key === 'Enter' && value.trim()) {
-        // Try to find exact match
-        const exactMatch = knownItemNames.find(name =>
-          name.toLowerCase().trim() === value.toLowerCase().trim()
+        // Try to find exact match from suggestions
+        const exactMatch = suggestions.find((s: { name: string; unit: Unit; category: string }) =>
+          s.name.toLowerCase().trim() === value.toLowerCase().trim()
         );
-        if (exactMatch) {
-          const info = getItemInfo(exactMatch);
+        if (exactMatch && onSelect) {
+          onSelect({
+            name: exactMatch.name,
+            unit: exactMatch.unit,
+            category: exactMatch.category,
+          });
+        } else {
+          // Try to get item info for the typed value
+          const info = getItemInfo(value.trim());
           if (info && onSelect) {
             onSelect({
-              name: exactMatch,
+              name: value.trim(),
               unit: info.unit,
               category: info.category,
             });
@@ -157,15 +161,9 @@ const SmartAutocomplete: React.FC<SmartAutocompleteProps> = ({
           onKeyDown={handleKeyDown}
           onFocus={() => value.trim() && suggestions.length > 0 && setIsOpen(true)}
           placeholder={placeholder}
-          list="known-items"
           autoFocus={autoFocus}
           className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-sm"
         />
-        <datalist id="known-items">
-          {knownItemNames.slice(0, 50).map(name => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
         {latestPrice !== undefined && (
           <div className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-secondary bg-surface px-2 py-0.5 rounded">
             {latestPrice.toLocaleString('fa-IR')} ریال
@@ -178,8 +176,7 @@ const SmartAutocomplete: React.FC<SmartAutocompleteProps> = ({
           ref={suggestionsRef}
           className="absolute z-50 w-full mt-1 bg-surface border border-border rounded-lg shadow-lg max-h-64 overflow-y-auto"
         >
-          {suggestions.map((suggestion, index) => {
-            const info = getItemInfo(suggestion.name);
+          {suggestions.map((suggestion: { name: string; unit: Unit; category: string; score: number; reason?: string }, index: number) => {
             const price = getLatestPricePerUnit(suggestion.name, suggestion.unit);
             const isHighlighted = index === highlightedIndex;
 
