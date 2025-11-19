@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, memo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, memo } from 'react';
 import { ShoppingList, ShoppingItem, Unit, ItemStatus, PaymentMethod, PaymentStatus, OcrResult } from '../../shared/types';
 import { t } from '../../shared/translations';
 import Header from '../components/common/Header';
