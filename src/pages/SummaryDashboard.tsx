@@ -14,7 +14,6 @@ import { useToast } from '../components/common/Toast.tsx';
 import { Chart } from 'chart.js/auto';
 import { usePageActions } from '../contexts/PageActionsContext';
 import Button from '../components/common/Button';
-import { toJalaliDateString } from '../../shared/jalali.ts';
 
 
 type Period = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
@@ -65,10 +64,10 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack }) => {
         } finally {
             setIsUpdating(false);
         }
-    }, 100); // Small delay to allow UI to show loading state
+    }, 50); // Small delay to allow UI to show loading state
 
     return () => clearTimeout(timer);
-  }, [period, getSummaryData, isInitialLoading]);
+  }, [period, getSummaryData]);
 
 // src/pages/SummaryDashboard.tsx
 
@@ -293,15 +292,23 @@ useEffect(() => {
     };
   }, [summaryData, doughnutChartOptions, t.totalSpend]);
 
-  const PeriodButton: React.FC<{ value: Period, label: string }> = ({ value, label }) => (
-    <button
-      onClick={() => setPeriod(value)}
-      disabled={isUpdating}
-      className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${period === value ? 'bg-accent text-accent-text' : 'bg-surface hover:bg-border'} disabled:opacity-50 disabled:cursor-wait`}
-    >
-      {label}
-    </button>
-  );
+  const PeriodButton: React.FC<{ value: Period, label: string }> = ({ value, label }) => {
+    const handleClick = () => {
+      if (!isUpdating) {
+        setPeriod(value);
+      }
+    };
+
+    return (
+      <button
+        onClick={handleClick}
+        disabled={isUpdating}
+        className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${period === value ? 'bg-accent text-accent-text' : 'bg-surface hover:bg-border'} disabled:opacity-50 disabled:cursor-not-allowed`}
+      >
+        {label}
+      </button>
+    );
+  };
 
   const renderContent = () => {
     if (isInitialLoading) {
@@ -367,26 +374,12 @@ useEffect(() => {
     <>
       <Header title={t.executiveSummary} onBack={onBack} backText={t.backToDashboard} hideMenu={true} />
       <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
-        <div className="flex flex-wrap gap-2 justify-center mb-6 items-center">
+        <div className="flex flex-wrap gap-2 justify-center mb-6">
           <PeriodButton value="7d" label={t.last7Days} />
           <PeriodButton value="30d" label={t.last30Days} />
           <PeriodButton value="mtd" label={t.thisMonth} />
           <PeriodButton value="ytd" label={t.thisYear} />
           <PeriodButton value="all" label={t.allTime} />
-          {summaryData && (
-            <button
-              onClick={() => {
-                // Show period dates in an alert or could open a date picker modal
-                const startDate = toJalaliDateString(summaryData.period.startDate.toISOString(), { format: 'long' });
-                const endDate = toJalaliDateString(summaryData.period.endDate.toISOString(), { format: 'long' });
-                addToast(`دوره: از ${startDate} تا ${endDate}`, 'info');
-              }}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-surface hover:bg-border transition-colors text-secondary hover:text-primary border border-border"
-              title="کلیک برای نمایش تاریخ دوره"
-            >
-              📅 {summaryData.period.startDate && toJalaliDateString(summaryData.period.startDate.toISOString())} - {summaryData.period.endDate && toJalaliDateString(summaryData.period.endDate.toISOString())}
-            </button>
-          )}
         </div>
         {renderContent()}
       </main>
