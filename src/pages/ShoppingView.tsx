@@ -197,6 +197,8 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
   };
 
   const boughtItems = list ? list.items.filter(item => item.status === ItemStatus.Bought) : [];
+  const totalCost = useMemo(() => boughtItems.reduce((sum, item) => sum + (item.paidPrice || 0), 0), [boughtItems]);
+  const totalDue = useMemo(() => boughtItems.filter(i => i.paymentStatus === PaymentStatus.Due).reduce((sum, item) => sum + (item.paidPrice || 0), 0), [boughtItems]);
 
   const groupAndSortPurchasedItems = (items: ShoppingItem[], vendors: Map<string, string>): StructuredReportData[] => {
     const categoryMap: Record<string, Record<string, ShoppingItem[]>> = {};
@@ -336,9 +338,6 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
 
   const groupedPendingItems = useMemo(() => groupItemsByCategory(pendingItems), [pendingItems]);
   const groupedBoughtItems = useMemo(() => groupItemsByCategory(boughtItems), [boughtItems]);
-
-  const totalCost = useMemo(() => boughtItems.reduce((sum, item) => sum + (item.paidPrice || 0), 0), [boughtItems]);
-  const totalDue = useMemo(() => boughtItems.filter(i => i.paymentStatus === PaymentStatus.Due).reduce((sum, item) => sum + (item.paidPrice || 0), 0), [boughtItems]);
   const totalEstimatedCost = useMemo(() => pendingItems.reduce((sum, item) => sum + (item.estimatedPrice || 0), 0), [pendingItems]);
 
   const { setActions } = usePageActions();
