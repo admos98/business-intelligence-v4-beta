@@ -322,7 +322,6 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
 
 
   const pendingItems = list ? list.items.filter(item => item.status === ItemStatus.Pending) : [];
-  const boughtItems = list ? list.items.filter(item => item.status === ItemStatus.Bought) : [];
 
   const groupItemsByCategory = (items: ShoppingItem[]): Record<string, ShoppingItem[]> => {
     return items.reduce((acc, item) => {
