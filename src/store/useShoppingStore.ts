@@ -91,6 +91,9 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   getSummaryData: (period: SummaryPeriod) => SummaryData | null;
   getInflationData: (periodInDays: number) => InflationData | null;
   getItemPriceHistory: (name: string, unit: Unit) => { date: string, pricePerUnit: number }[];
+  getItemVendorPrices: (name: string, unit: Unit) => Array<{ vendorId: string; vendorName: string; pricePerUnit: number; purchaseCount: number }>;
+  getAllPurchasesForItem: (name: string, unit: Unit) => Array<{ date: Date; vendorId?: string; vendorName?: string; pricePerUnit: number; amount: number; totalPrice: number }>;
+  getAllPurchasesForVendor: (vendorId: string) => Array<{ date: Date; itemName: string; itemUnit: Unit; pricePerUnit: number; amount: number; totalPrice: number }>;
   isItemInTodaysPendingList: (name: string, unit: Unit) => boolean;
 
   // SELL ANALYTICS COMPUTED
@@ -599,6 +602,110 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           // Sort by date ascending
           return history.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       },
+      getItemVendorPrices: (name, unit) => {
+          const vendorPrices = new Map<string, { pricePerUnit: number; purchaseCount: number }>();
+          const vendors = get().vendors;
+
+          get().lists.forEach(list => {
+              list.items.forEach(item => {
+                  if (
+                      item.name === name &&
+                      item.unit === unit &&
+                      item.status === ItemStatus.Bought &&
+                      item.vendorId &&
+                      item.paidPrice != null &&
+                      item.purchasedAmount != null &&
+                      item.purchasedAmount > 0
+                  ) {
+                      const pricePerUnit = item.paidPrice / item.purchasedAmount;
+                      const existing = vendorPrices.get(item.vendorId);
+                      if (existing) {
+                          // Average price weighted by purchase count
+                          const totalCount = existing.purchaseCount + 1;
+                          const avgPrice = ((existing.pricePerUnit * existing.purchaseCount) + pricePerUnit) / totalCount;
+                          vendorPrices.set(item.vendorId, {
+                              pricePerUnit: avgPrice,
+                              purchaseCount: totalCount
+                          });
+                      } else {
+                          vendorPrices.set(item.vendorId, {
+                              pricePerUnit,
+                              purchaseCount: 1
+                          });
+                      }
+                  }
+              });
+          });
+
+          return Array.from(vendorPrices.entries())
+              .map(([vendorId, data]) => {
+                  const vendor = vendors.find(v => v.id === vendorId);
+                  return {
+                      vendorId,
+                      vendorName: vendor?.name || 'نامشخص',
+                      pricePerUnit: data.pricePerUnit,
+                      purchaseCount: data.purchaseCount
+                  };
+              })
+              .sort((a, b) => a.pricePerUnit - b.pricePerUnit); // Sort by price ascending
+      },
+      getAllPurchasesForItem: (name, unit) => {
+          const purchases: Array<{ date: Date; vendorId?: string; vendorName?: string; pricePerUnit: number; amount: number; totalPrice: number }> = [];
+          const vendors = get().vendors;
+
+          get().lists.forEach(list => {
+              const listDate = new Date(list.createdAt);
+              list.items.forEach(item => {
+                  if (
+                      item.name === name &&
+                      item.unit === unit &&
+                      item.status === ItemStatus.Bought &&
+                      item.paidPrice != null &&
+                      item.purchasedAmount != null &&
+                      item.purchasedAmount > 0
+                  ) {
+                      const vendor = item.vendorId ? vendors.find(v => v.id === item.vendorId) : undefined;
+                      purchases.push({
+                          date: listDate,
+                          vendorId: item.vendorId,
+                          vendorName: vendor?.name,
+                          pricePerUnit: item.paidPrice / item.purchasedAmount,
+                          amount: item.purchasedAmount,
+                          totalPrice: item.paidPrice
+                      });
+                  }
+              });
+          });
+
+          return purchases.sort((a, b) => b.date.getTime() - a.date.getTime()); // Most recent first
+      },
+      getAllPurchasesForVendor: (vendorId) => {
+          const purchases: Array<{ date: Date; itemName: string; itemUnit: Unit; pricePerUnit: number; amount: number; totalPrice: number }> = [];
+
+          get().lists.forEach(list => {
+              const listDate = new Date(list.createdAt);
+              list.items.forEach(item => {
+                  if (
+                      item.vendorId === vendorId &&
+                      item.status === ItemStatus.Bought &&
+                      item.paidPrice != null &&
+                      item.purchasedAmount != null &&
+                      item.purchasedAmount > 0
+                  ) {
+                      purchases.push({
+                          date: listDate,
+                          itemName: item.name,
+                          itemUnit: item.unit,
+                          pricePerUnit: item.paidPrice / item.purchasedAmount,
+                          amount: item.purchasedAmount,
+                          totalPrice: item.paidPrice
+                      });
+                  }
+              });
+          });
+
+          return purchases.sort((a, b) => b.date.getTime() - a.date.getTime()); // Most recent first
+      },
       isItemInTodaysPendingList: (name, unit) => {
         const today = new Date();
         const listId = toJalaliDateString(new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())).toISOString());
@@ -655,14 +762,15 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const itemInflation: InflationDetail[] = [];
         itemPrices.forEach((data, nameAndUnit) => {
             if (data.prices.length >= 2) {
-                const startPrice = data.prices[0].price;
-                const endPrice = data.prices[data.prices.length - 1].price;
-                if (startPrice > 0) {
+                // Use last purchase as baseline, compare to previous purchases
+                const lastPrice = data.prices[data.prices.length - 1].price;
+                const previousPrice = data.prices[data.prices.length - 2].price;
+                if (previousPrice > 0) {
                     itemInflation.push({
                         name: nameAndUnit.split('-')[0],
-                        startPrice,
-                        endPrice,
-                        changePercentage: ((endPrice - startPrice) / startPrice) * 100,
+                        startPrice: previousPrice,
+                        endPrice: lastPrice,
+                        changePercentage: ((lastPrice - previousPrice) / previousPrice) * 100,
                     });
                 }
             }
@@ -704,18 +812,19 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             itemMap.forEach(itemData => {
                 // prices are already sorted by date from the initial `allPurchases` sort.
                 if (itemData.prices.length >= 2) {
-                    const startPrice = itemData.prices[0].price;
-                    const endPrice = itemData.prices[itemData.prices.length - 1].price;
+                    // Use last purchase as baseline
+                    const lastPrice = itemData.prices[itemData.prices.length - 1].price;
+                    const previousPrice = itemData.prices[itemData.prices.length - 2].price;
                     const itemSpend = itemData.totalSpend;
 
-                    if (startPrice > 0) {
-                        const itemInflationPercentage = ((endPrice - startPrice) / startPrice);
+                    if (previousPrice > 0) {
+                        const itemInflationPercentage = ((lastPrice - previousPrice) / previousPrice);
 
                         weightedInflationSum += itemInflationPercentage * itemSpend;
                         totalSpendInCategory += itemSpend;
 
-                        weightedStartPriceSum += startPrice * itemSpend;
-                        weightedEndPriceSum += endPrice * itemSpend;
+                        weightedStartPriceSum += previousPrice * itemSpend;
+                        weightedEndPriceSum += lastPrice * itemSpend;
                     }
                 }
             });
@@ -881,7 +990,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
         // Primary: use purchase history as baseline, deduct consumption inferred from sales
         purchaseHistory.forEach(history => {
-          if (history.purchases.length < 1) return; // need at least one purchase baseline
+          if (history.purchases.length < 2) return; // need at least 2 purchases to establish a pattern
 
           const firstPurchase = history.purchases[0];
           const lastPurchase = history.purchases[history.purchases.length - 1];
@@ -893,13 +1002,21 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
           const key = `${history.name}-${history.unit}`;
           const consumptions = consumptionHistory.get(key)?.consumptions || [];
-          const consumedSinceLastPurchase = consumptions.filter(c => c.date.getTime() > lastPurchase.date.getTime()).reduce((s, c) => s + c.amount, 0);
 
-          // Use actual stock if available, otherwise estimate
+          // Calculate total consumed since first purchase
+          const firstPurchaseDate = history.purchases[0].date;
+          const totalConsumed = consumptions
+            .filter(c => c.date.getTime() >= firstPurchaseDate.getTime())
+            .reduce((s, c) => s + c.amount, 0);
+
+          // Calculate total purchased
+          const totalPurchased = history.purchases.reduce((s, p) => s + p.amount, 0);
+
+          // Use actual stock if available, otherwise estimate from purchases - consumptions
           const actualStock = get().getStock(history.name, history.unit);
           const estimatedCurrentStock = actualStock >= 0
             ? actualStock
-            : Math.max(0, lastPurchase.amount - consumedSinceLastPurchase);
+            : Math.max(0, totalPurchased - totalConsumed);
 
           // Prefer sales-derived rate if sufficient data, else fall back to purchase-derived rate
           let dailyConsumptionRate = dailyConsumptionRateFromPurchases;
@@ -918,19 +1035,15 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             ? totalDurationDays / history.purchases.length
             : 30;
 
-          // Check for price inflation
+          // Check for price inflation - compare last purchase to previous purchase
           const priceHistory = get().getItemPriceHistory(history.name, history.unit);
           let inflationReason = '';
           if (priceHistory.length >= 2) {
-            const recent = priceHistory.slice(-3);
-            const older = priceHistory.slice(0, Math.max(1, priceHistory.length - 3));
-            if (older.length > 0) {
-              const recentAvg = recent.reduce((s, p) => s + p.pricePerUnit, 0) / recent.length;
-              const olderAvg = older.reduce((s, p) => s + p.pricePerUnit, 0) / older.length;
-              if (olderAvg > 0 && recentAvg > olderAvg * 1.1) {
-                const percentIncrease = ((recentAvg - olderAvg) / olderAvg * 100).toFixed(1);
-                inflationReason = t.suggestionReasonInflation(percentIncrease);
-              }
+            const lastPrice = priceHistory[priceHistory.length - 1].pricePerUnit;
+            const previousPrice = priceHistory[priceHistory.length - 2].pricePerUnit;
+            if (previousPrice > 0 && lastPrice > previousPrice * 1.05) {
+              const percentIncrease = ((lastPrice - previousPrice) / previousPrice * 100).toFixed(1);
+              inflationReason = t.suggestionReasonInflation(percentIncrease);
             }
           }
 

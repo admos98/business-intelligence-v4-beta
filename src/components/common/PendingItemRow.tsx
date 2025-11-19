@@ -1,7 +1,8 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { ShoppingItem } from '../../../shared/types';
 import CurrencyDisplay from './CurrencyDisplay';
 import Button from './Button';
+import { useShoppingStore } from '../../store/useShoppingStore';
 
 interface PendingItemRowProps {
   item: ShoppingItem;
@@ -23,6 +24,11 @@ const PendingItemRow: React.FC<PendingItemRowProps> = memo(({
   onEdit,
   onDelete
 }) => {
+  const { getItemVendorPrices } = useShoppingStore();
+  const vendorPrices = useMemo(() => getItemVendorPrices(item.name, item.unit), [getItemVendorPrices, item.name, item.unit]);
+  const bestVendor = vendorPrices.length > 0 ? vendorPrices[0] : null;
+  const hasMultipleVendors = vendorPrices.length > 1;
+
   return (
     <li
       className={`p-3 rounded-lg transition-all duration-300 flex items-center gap-4 group animate-fade-in hover-lift ${
@@ -42,7 +48,7 @@ const PendingItemRow: React.FC<PendingItemRowProps> = memo(({
           <span className="font-medium text-primary block truncate">
             {item.name} - {item.amount} {item.unit}
           </span>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             {item.estimatedPrice && (
               <CurrencyDisplay
                 value={item.estimatedPrice}
@@ -50,6 +56,11 @@ const PendingItemRow: React.FC<PendingItemRowProps> = memo(({
               />
             )}
             <span className="text-xs text-secondary">{item.category}</span>
+            {hasMultipleVendors && bestVendor && (
+              <span className="text-xs text-accent font-medium" title={`بهترین قیمت: ${bestVendor.vendorName}`}>
+                💰 {bestVendor.vendorName}: <CurrencyDisplay value={bestVendor.pricePerUnit} className="text-xs" />
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">

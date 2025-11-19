@@ -14,6 +14,7 @@ import { useToast } from '../components/common/Toast.tsx';
 import { Chart } from 'chart.js/auto';
 import { usePageActions } from '../contexts/PageActionsContext';
 import Button from '../components/common/Button';
+import { toJalaliDateString } from '../../shared/jalali.ts';
 
 
 type Period = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
@@ -366,12 +367,26 @@ useEffect(() => {
     <>
       <Header title={t.executiveSummary} onBack={onBack} backText={t.backToDashboard} hideMenu={true} />
       <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
-        <div className="flex flex-wrap gap-2 justify-center mb-6">
+        <div className="flex flex-wrap gap-2 justify-center mb-6 items-center">
           <PeriodButton value="7d" label={t.last7Days} />
           <PeriodButton value="30d" label={t.last30Days} />
           <PeriodButton value="mtd" label={t.thisMonth} />
           <PeriodButton value="ytd" label={t.thisYear} />
           <PeriodButton value="all" label={t.allTime} />
+          {summaryData && (
+            <button
+              onClick={() => {
+                // Show period dates in an alert or could open a date picker modal
+                const startDate = toJalaliDateString(summaryData.period.startDate.toISOString(), { format: 'long' });
+                const endDate = toJalaliDateString(summaryData.period.endDate.toISOString(), { format: 'long' });
+                addToast(`دوره: از ${startDate} تا ${endDate}`, 'info');
+              }}
+              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-surface hover:bg-border transition-colors text-secondary hover:text-primary border border-border"
+              title="کلیک برای نمایش تاریخ دوره"
+            >
+              📅 {summaryData.period.startDate && toJalaliDateString(summaryData.period.startDate.toISOString())} - {summaryData.period.endDate && toJalaliDateString(summaryData.period.endDate.toISOString())}
+            </button>
+          )}
         </div>
         {renderContent()}
       </main>

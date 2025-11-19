@@ -2,8 +2,9 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { t } from '../../shared/translations.ts';
 import { useShoppingStore } from '../store/useShoppingStore.ts';
 import Header from '../components/common/Header.tsx';
-import { MasterItem } from '../../shared/types.ts';
+import { MasterItem, Unit } from '../../shared/types.ts';
 import EditItemMasterModal from '../components/modals/EditItemMasterModal.tsx';
+import ItemPurchaseHistoryModal from '../components/modals/ItemPurchaseHistoryModal.tsx';
 import { useToast } from '../components/common/Toast.tsx';
 import CurrencyDisplay from '../components/common/CurrencyDisplay.tsx';
 import { toJalaliDateString } from '../../shared/jalali.ts';
@@ -187,6 +188,7 @@ const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack }) => {
   const { getAllKnownItems, getItemPriceHistory } = useShoppingStore();
   const [modalState, setModalState] = useState<{ open: boolean; item?: MasterItem }>({ open: false });
   const [analyzedItem, setAnalyzedItem] = useState<MasterItem | null>(null);
+  const [historyItem, setHistoryItem] = useState<{ name: string; unit: Unit } | null>(null);
   const { addToast } = useToast();
 
   const allItems = useMemo(() => getAllKnownItems(), [getAllKnownItems]);
@@ -259,7 +261,11 @@ const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack }) => {
             {allItems.map(item => {
                 const priceHistory = getItemPriceHistory(item.name, item.unit);
                 return (
-                  <div key={`${item.name}-${item.unit}`} className="bg-surface rounded-xl border border-border shadow-card flex flex-col">
+                  <div
+                    key={`${item.name}-${item.unit}`}
+                    className="bg-surface rounded-xl border border-border shadow-card flex flex-col cursor-pointer hover:border-accent transition-colors"
+                    onClick={() => setHistoryItem({ name: item.name, unit: item.unit })}
+                  >
                     <div className="p-5 flex-grow">
                       <h2 className="text-lg font-bold text-primary mb-1">{item.name}</h2>
                       <p className="text-sm text-secondary mb-3">{item.category} / {item.unit}</p>
@@ -296,7 +302,7 @@ const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack }) => {
                           </div>
                         </div>
                     </div>
-                    <div className="p-2 border-t border-border flex justify-end gap-2 items-center">
+                    <div className="p-2 border-t border-border flex justify-end gap-2 items-center" onClick={(e) => e.stopPropagation()}>
                         {priceHistory.length > 1 && (
                             <button onClick={() => setAnalyzedItem(item)} className="px-2 py-1 text-xs text-accent hover:bg-accent/10 rounded-md font-medium">{t.analyzeTrend}</button>
                         )}
@@ -318,6 +324,13 @@ const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack }) => {
         <ItemTrendModal
             item={analyzedItem}
             onClose={() => setAnalyzedItem(null)}
+        />
+      )}
+      {historyItem && (
+        <ItemPurchaseHistoryModal
+          itemName={historyItem.name}
+          itemUnit={historyItem.unit}
+          onClose={() => setHistoryItem(null)}
         />
       )}
     </>

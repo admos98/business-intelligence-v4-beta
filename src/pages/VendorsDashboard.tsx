@@ -4,6 +4,7 @@ import { useShoppingStore } from '../store/useShoppingStore';
 import Header from '../components/common/Header';
 import { Vendor, ItemStatus } from '../../shared/types';
 import VendorModal from '../components/modals/VendorModal';
+import VendorPurchaseHistoryModal from '../components/modals/VendorPurchaseHistoryModal';
 import ConfirmModal from '../components/modals/ConfirmModal';
 import { useToast } from '../components/common/Toast';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
@@ -20,6 +21,7 @@ interface VendorsDashboardProps {
 const VendorsDashboard: React.FC<VendorsDashboardProps> = ({ onBack }) => {
   const { vendors, lists, deleteVendor } = useShoppingStore();
   const [modalState, setModalState] = useState<{ open: boolean; vendor?: Vendor }>({ open: false });
+  const [historyVendor, setHistoryVendor] = useState<Vendor | null>(null);
   const { addToast } = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; vendor?: Vendor }>({ isOpen: false });
 
@@ -122,7 +124,11 @@ const VendorsDashboard: React.FC<VendorsDashboardProps> = ({ onBack }) => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {vendors.sort((a,b) => a.name.localeCompare(b.name, 'fa')).map(vendor => (
-              <div key={vendor.id} className="bg-surface rounded-xl border border-border shadow-card flex flex-col">
+              <div
+                key={vendor.id}
+                className="bg-surface rounded-xl border border-border shadow-card flex flex-col cursor-pointer hover:border-accent transition-colors"
+                onClick={() => setHistoryVendor(vendor)}
+              >
                 <div className="p-5 flex-grow">
                   <h2 className="text-lg font-bold text-primary mb-2">{vendor.name}</h2>
                   <div className="text-sm text-secondary space-y-1 mb-4">
@@ -141,7 +147,7 @@ const VendorsDashboard: React.FC<VendorsDashboardProps> = ({ onBack }) => {
                         </div>
                    </div>
                 </div>
-                <div className="p-2 border-t border-border flex justify-end gap-2">
+                <div className="p-2 border-t border-border flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => setModalState({ open: true, vendor })} className="p-1.5 text-secondary hover:text-primary"><EditIcon/></button>
                     <button onClick={() => handleDeleteVendor(vendor)} className="p-1.5 text-secondary hover:text-danger"><DeleteIcon/></button>
                 </div>
@@ -164,6 +170,12 @@ const VendorsDashboard: React.FC<VendorsDashboardProps> = ({ onBack }) => {
         message={deleteConfirm.vendor ? t.confirmDeleteVendor(deleteConfirm.vendor.name) : ''}
         variant="danger"
       />
+      {historyVendor && (
+        <VendorPurchaseHistoryModal
+          vendor={historyVendor}
+          onClose={() => setHistoryVendor(null)}
+        />
+      )}
     </>
   );
 };
