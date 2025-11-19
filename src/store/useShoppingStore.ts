@@ -1947,16 +1947,26 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const categoryRevenue = new Map<string, number>();
 
         transactions.forEach(trans => {
-          kpis.totalRevenue += trans.totalAmount;
+          // Exclude Staff payments from revenue calculations
+          const isStaffPayment = trans.paymentMethod === PaymentMethod.Staff ||
+            (trans.splitPayments && trans.splitPayments.some(sp => sp.method === PaymentMethod.Staff));
+
+          if (!isStaffPayment) {
+            kpis.totalRevenue += trans.totalAmount;
+          }
+
           trans.items.forEach(item => {
             const posItem = get().posItems.find(p => p.id === item.posItemId);
             if (posItem) {
               const existing = itemStats.get(item.posItemId) || { quantity: 0, revenue: 0, category: posItem.category };
               existing.quantity += item.quantity;
-              existing.revenue += item.totalPrice;
+              // Exclude Staff payments from item revenue
+              existing.revenue += isStaffPayment ? 0 : item.totalPrice;
               itemStats.set(item.posItemId, existing);
 
-              categoryRevenue.set(posItem.category, (categoryRevenue.get(posItem.category) || 0) + item.totalPrice);
+              // Exclude Staff payments from category revenue
+              const categoryRev = categoryRevenue.get(posItem.category) || 0;
+              categoryRevenue.set(posItem.category, categoryRev + (isStaffPayment ? 0 : item.totalPrice));
             }
           });
         });

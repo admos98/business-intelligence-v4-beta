@@ -44,6 +44,7 @@ export enum PaymentMethod {
   Cash = 'نقد',
   Card = 'کارت',
   Transfer = 'انتقال بانکی',
+  Staff = 'پرسنل',
 }
 
 export interface Vendor {
@@ -220,6 +221,7 @@ export interface SellTransaction {
   discountAmount?: number;
   isRefund?: boolean; // True if this is a refund/return
   originalTransactionId?: string; // Link to original transaction if this is a refund
+  status?: 'draft' | 'completed'; // Draft (ongoing) or completed receipt
 }
 
 // ============================================

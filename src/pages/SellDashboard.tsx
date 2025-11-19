@@ -319,7 +319,10 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     `).join('');
 
     const splitPaymentsHtml = transaction.splitPayments && transaction.splitPayments.length > 0
-      ? transaction.splitPayments.map(split => `<p>${split.method}: ${split.amount.toLocaleString()} ریال</p>`).join('')
+      ? transaction.splitPayments.map(split => {
+          const amount = split.method === PaymentMethod.Staff ? 0 : split.amount;
+          return `<p>${split.method}: ${amount.toLocaleString()} ریال${split.method === PaymentMethod.Staff ? ' (پرسنل)' : ''}</p>`;
+        }).join('')
       : '';
 
     const html = `
@@ -361,7 +364,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
           ${transaction.discountAmount ? `<p>تخفیف: ${transaction.discountAmount.toLocaleString()} ریال</p>` : ''}
           ${transaction.splitPayments && transaction.splitPayments.length > 0
             ? `<div>${splitPaymentsHtml}</div>`
-            : `<p>روش پرداخت: ${transaction.paymentMethod}</p>`}
+            : `<p>روش پرداخت: ${transaction.paymentMethod}${transaction.paymentMethod === PaymentMethod.Staff ? ' (پرسنل - مبلغ: ۰ ریال)' : ''}</p>`}
         </div>
         ${receiptTemplate.footer ? `<div class="footer">${receiptTemplate.footer}</div>` : ''}
       </body>
@@ -408,8 +411,10 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       customizationChoices: cartItem.customizations,
     }));
 
-    // Calculate split payments total
-    const splitTotal = splitPayments.reduce((sum, split) => sum + split.amount, 0);
+    // Calculate split payments total (excluding Staff payments which are always 0)
+    const splitTotal = splitPayments.reduce((sum, split) => {
+      return sum + (split.method === PaymentMethod.Staff ? 0 : split.amount);
+    }, 0);
     const hasValidSplit = useSplitPayment && splitPayments.length > 0 && Math.abs(splitTotal - finalTotal) < 0.01;
 
     if (useSplitPayment && !hasValidSplit && !refundMode) {
@@ -417,14 +422,25 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       return;
     }
 
+    // Handle Staff payment method - set amount to 0 but track items
+    const isStaffPayment = paymentMethod === PaymentMethod.Staff ||
+      (useSplitPayment && splitPayments.some(sp => sp.method === PaymentMethod.Staff));
+
+    const calculatedTotal = refundMode ? -Math.abs(finalTotal) : finalTotal;
+    const finalAmount = isStaffPayment ? 0 : calculatedTotal;
+
     const transaction: Omit<SellTransaction, 'id' | 'date'> = {
       items,
-      totalAmount: refundMode ? -Math.abs(finalTotal) : finalTotal,
+      totalAmount: finalAmount,
       paymentMethod,
-      splitPayments: useSplitPayment && hasValidSplit ? splitPayments : undefined,
+      splitPayments: useSplitPayment && hasValidSplit ? splitPayments.map(sp => ({
+        method: sp.method,
+        amount: sp.method === PaymentMethod.Staff ? 0 : sp.amount
+      })) : undefined,
       discountAmount: discountAmount > 0 ? discountAmount : undefined,
       isRefund: refundMode,
       originalTransactionId: refundMode && selectedTransactionForRefund ? selectedTransactionForRefund.id : undefined,
+      status: 'completed', // Mark as completed when finalized
     };
 
     const transactionId = addSellTransaction(transaction);
@@ -434,14 +450,12 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     setSelectedTransactionForRefund(null);
     addToast(refundMode ? 'بازگشت وجه ثبت شد' : 'فروش ثبت شد', 'success');
 
-    // Auto-print receipt
+    // Auto-print receipt immediately (like other accounting apps)
     if (transactionId) {
-      setTimeout(() => {
-        const newTrans = store.sellTransactions.find(t => t.id === transactionId);
-        if (newTrans) {
-          printReceipt(newTrans);
-        }
-      }, 500);
+      const newTrans = store.sellTransactions.find(t => t.id === transactionId);
+      if (newTrans) {
+        printReceipt(newTrans);
+      }
     }
   };
 
@@ -696,7 +710,12 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       return transDate >= today && transDate < tomorrow && trans.isRefund;
     });
 
-    const totalRevenue = todayTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
+    const totalRevenue = todayTransactions.reduce((sum, t) => {
+      // Exclude Staff payments from revenue
+      const isStaffPayment = t.paymentMethod === PaymentMethod.Staff ||
+        (t.splitPayments && t.splitPayments.some(sp => sp.method === PaymentMethod.Staff));
+      return sum + (isStaffPayment ? 0 : t.totalAmount);
+    }, 0);
     const totalRefunds = Math.abs(todayRefunds.reduce((sum, t) => sum + t.totalAmount, 0));
     const netRevenue = totalRevenue - totalRefunds;
 
@@ -704,6 +723,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       [PaymentMethod.Cash]: 0,
       [PaymentMethod.Card]: 0,
       [PaymentMethod.Transfer]: 0,
+      [PaymentMethod.Staff]: 0,
     };
 
     todayTransactions.forEach(trans => {
@@ -718,12 +738,16 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
 
     const itemBreakdown = new Map<string, { quantity: number; revenue: number }>();
     todayTransactions.forEach(trans => {
+      // Exclude Staff payments from revenue calculations
+      const isStaffPayment = trans.paymentMethod === PaymentMethod.Staff ||
+        (trans.splitPayments && trans.splitPayments.some(sp => sp.method === PaymentMethod.Staff));
+
       trans.items.forEach(item => {
         const key = item.name;
         const existing = itemBreakdown.get(key) || { quantity: 0, revenue: 0 };
         itemBreakdown.set(key, {
           quantity: existing.quantity + Math.abs(item.quantity),
-          revenue: existing.revenue + Math.abs(item.totalPrice),
+          revenue: existing.revenue + (isStaffPayment ? 0 : Math.abs(item.totalPrice)),
         });
       });
     });
@@ -852,6 +876,9 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
         <Button key="sell-analysis" variant="secondary" size="sm" onClick={onViewSellAnalysis} fullWidth>
           تحلیل فروش
         </Button>
+        <Button key="shift-management" variant="secondary" size="sm" onClick={() => setShowShiftModal(true)} fullWidth>
+          {getActiveShift() ? 'مدیریت شیفت' : 'شروع شیفت'}
+        </Button>
       </>
     );
     setActions(actions);
@@ -859,7 +886,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       // Cleanup: set actions to null synchronously to avoid DOM manipulation errors
       setActions(null);
     };
-  }, [setActions, handleExportTransactionsCsv, handleExportTransactionsJson, handlePrintCart, onViewSellAnalysis]);
+  }, [setActions, handleExportTransactionsCsv, handleExportTransactionsJson, handlePrintCart, onViewSellAnalysis, getActiveShift]);
 
   return (
     <>
@@ -1482,8 +1509,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                     </div>
 
                     {!useSplitPayment ? (
-                      <div className="grid grid-cols-3 gap-2">
-                        {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer].map(method => (
+                      <div className="grid grid-cols-2 gap-2">
+                        {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer, PaymentMethod.Staff].map(method => (
                           <button
                             key={method}
                             onClick={() => setPaymentMethod(method)}
@@ -1505,24 +1532,30 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                               value={split.method}
                               onChange={(e) => {
                                 const newSplits = [...splitPayments];
-                                newSplits[idx].method = e.target.value as PaymentMethod;
+                                const newMethod = e.target.value as PaymentMethod;
+                                newSplits[idx].method = newMethod;
+                                // Auto-set amount to 0 for Staff payment
+                                if (newMethod === PaymentMethod.Staff) {
+                                  newSplits[idx].amount = 0;
+                                }
                                 setSplitPayments(newSplits);
                               }}
                               className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg text-sm"
                             >
-                              {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer].map(method => (
+                              {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer, PaymentMethod.Staff].map(method => (
                                 <option key={method} value={method}>{method}</option>
                               ))}
                             </select>
                             <input
                               type="number"
-                              value={split.amount || ''}
+                              value={split.method === PaymentMethod.Staff ? 0 : (split.amount || '')}
                               onChange={(e) => {
                                 const newSplits = [...splitPayments];
-                                newSplits[idx].amount = parseFloat(e.target.value) || 0;
+                                newSplits[idx].amount = split.method === PaymentMethod.Staff ? 0 : (parseFloat(e.target.value) || 0);
                                 setSplitPayments(newSplits);
                               }}
-                              className="w-32 px-3 py-2 bg-surface border border-border rounded-lg text-sm"
+                              disabled={split.method === PaymentMethod.Staff}
+                              className="w-32 px-3 py-2 bg-surface border border-border rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                               placeholder="مبلغ"
                               min="0"
                             />
@@ -1544,13 +1577,22 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                         >
                           + افزودن روش پرداخت
                         </button>
+                        {splitPayments.some(sp => sp.method === PaymentMethod.Staff) && (
+                          <p className="text-xs text-secondary mt-2">
+                            توجه: پرداخت پرسنل همیشه با مبلغ صفر ثبت می‌شود
+                          </p>
+                        )}
                         {splitPayments.length > 0 && (
                           <div className="flex justify-between items-center pt-2 border-t border-border">
                             <span className="text-sm text-secondary">مجموع:</span>
                             <CurrencyDisplay
-                              value={splitPayments.reduce((sum: number, s: { method: PaymentMethod; amount: number }) => sum + s.amount, 0)}
+                              value={splitPayments.reduce((sum: number, s: { method: PaymentMethod; amount: number }) => {
+                                return sum + (s.method === PaymentMethod.Staff ? 0 : s.amount);
+                              }, 0)}
                               className={`text-sm font-semibold ${
-                                Math.abs(splitPayments.reduce((sum: number, s: { method: PaymentMethod; amount: number }) => sum + s.amount, 0) - finalTotal) < 0.01
+                                Math.abs(splitPayments.reduce((sum: number, s: { method: PaymentMethod; amount: number }) => {
+                                  return sum + (s.method === PaymentMethod.Staff ? 0 : s.amount);
+                                }, 0) - finalTotal) < 0.01
                                   ? 'text-success'
                                   : 'text-danger'
                               }`}
@@ -1564,17 +1606,64 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                     )}
                   </div>
 
-                  <Button
-                    variant={refundMode ? "danger" : "success"}
-                    size="lg"
-                    onClick={handleCompleteSale}
-                    disabled={cartArray.length === 0 || (refundMode && !selectedTransactionForRefund)}
-                    fullWidth
-                    icon={<CheckIcon />}
-                    className="animate-fade-in"
-                  >
-                    {refundMode ? 'تایید و ثبت بازگشت وجه' : 'تایید و ثبت فروش'}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      size="lg"
+                      onClick={() => {
+                        if (cartArray.length === 0) {
+                          addToast('سبد خرید خالی است', 'error');
+                          return;
+                        }
+                        // Save as draft
+                        const items: SellTransactionItem[] = cartArray.map(cartItem => ({
+                          id: `item-${Date.now()}-${Math.random()}`,
+                          posItemId: cartItem.posItemId,
+                          name: cartItem.name,
+                          quantity: cartItem.quantity,
+                          unitPrice: cartItem.unitPrice,
+                          totalPrice: cartItem.quantity * cartItem.unitPrice,
+                          customizationChoices: cartItem.customizations,
+                        }));
+
+                        const isStaffPayment = paymentMethod === PaymentMethod.Staff;
+                        const calculatedTotal = finalTotal;
+                        const finalAmount = isStaffPayment ? 0 : calculatedTotal;
+
+                        const transaction: Omit<SellTransaction, 'id' | 'date'> = {
+                          items,
+                          totalAmount: finalAmount,
+                          paymentMethod,
+                          splitPayments: useSplitPayment && splitPayments.length > 0 ? splitPayments.map(sp => ({
+                            method: sp.method,
+                            amount: sp.method === PaymentMethod.Staff ? 0 : sp.amount
+                          })) : undefined,
+                          discountAmount: discountAmount > 0 ? discountAmount : undefined,
+                          status: 'draft', // Save as draft
+                        };
+
+                        addSellTransaction(transaction);
+                        setCart(new Map());
+                        setDiscountAmount(0);
+                        addToast('پیش‌نویس ذخیره شد', 'success');
+                      }}
+                      disabled={cartArray.length === 0}
+                      fullWidth
+                    >
+                      ذخیره پیش‌نویس
+                    </Button>
+                    <Button
+                      variant={refundMode ? "danger" : "success"}
+                      size="lg"
+                      onClick={handleCompleteSale}
+                      disabled={cartArray.length === 0 || (refundMode && !selectedTransactionForRefund)}
+                      fullWidth
+                      icon={<CheckIcon />}
+                      className="animate-fade-in"
+                    >
+                      {refundMode ? 'تایید و ثبت بازگشت وجه' : 'تایید و ثبت فروش'}
+                    </Button>
+                  </div>
                   <p className="text-xs text-secondary text-center">Enter برای ثبت سریع</p>
                 </div>
               </Card>
@@ -1872,8 +1961,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
               <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium text-primary block mb-2">روش پرداخت</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer].map(method => (
+                  <div className="grid grid-cols-2 gap-2">
+                    {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer, PaymentMethod.Staff].map(method => (
                       <button
                         key={method}
                         onClick={() => setEditingPaymentMethod(method)}
@@ -2245,6 +2334,7 @@ const RecentTransactionsCard: React.FC<{
   const { sellTransactions } = store as { sellTransactions: SellTransaction[] };
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentFilter, setPaymentFilter] = useState<PaymentMethod | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'completed'>('all');
 
   const filteredTransactions = useMemo(() => {
     let filtered = [...sellTransactions];
@@ -2265,8 +2355,16 @@ const RecentTransactionsCard: React.FC<{
       filtered = filtered.filter(trans => trans.paymentMethod === paymentFilter);
     }
 
+    // Status filter (ongoing/finished)
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(trans => {
+        const transStatus = trans.status || 'completed'; // Default to completed for backwards compatibility
+        return transStatus === statusFilter;
+      });
+    }
+
     return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [sellTransactions, searchQuery, paymentFilter]);
+  }, [sellTransactions, searchQuery, paymentFilter, statusFilter]);
 
   const recentTransactions = filteredTransactions.slice(0, 20); // Show up to 20 filtered results
 
@@ -2292,7 +2390,7 @@ const RecentTransactionsCard: React.FC<{
           >
             همه
           </button>
-          {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer].map(method => (
+          {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer, PaymentMethod.Staff].map(method => (
             <button
               key={method}
               onClick={() => setPaymentFilter(method)}
@@ -2305,6 +2403,38 @@ const RecentTransactionsCard: React.FC<{
               {method}
             </button>
           ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+              statusFilter === 'all'
+                ? 'bg-accent text-accent-text'
+                : 'bg-surface border border-border text-primary hover:bg-border'
+            }`}
+          >
+            همه
+          </button>
+          <button
+            onClick={() => setStatusFilter('draft')}
+            className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+              statusFilter === 'draft'
+                ? 'bg-warning text-white'
+                : 'bg-surface border border-border text-primary hover:bg-border'
+            }`}
+          >
+            در حال انجام
+          </button>
+          <button
+            onClick={() => setStatusFilter('completed')}
+            className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+              statusFilter === 'completed'
+                ? 'bg-success text-white'
+                : 'bg-surface border border-border text-primary hover:bg-border'
+            }`}
+          >
+            تکمیل شده
+          </button>
         </div>
       </div>
 
@@ -2321,6 +2451,16 @@ const RecentTransactionsCard: React.FC<{
                   <span className="text-secondary">{toJalaliDateString(trans.date)}</span>
                   {trans.receiptNumber && (
                     <span className="text-xs text-accent mr-2">#{trans.receiptNumber}</span>
+                  )}
+                  {(trans.status === 'draft' || !trans.status) && (
+                    <span className="text-xs bg-warning/20 text-warning px-2 py-0.5 rounded mr-2">
+                      {trans.status === 'draft' ? 'در حال انجام' : 'تکمیل شده'}
+                    </span>
+                  )}
+                  {trans.status === 'completed' && (
+                    <span className="text-xs bg-success/20 text-success px-2 py-0.5 rounded mr-2">
+                      تکمیل شده
+                    </span>
                   )}
                 </div>
                 <CurrencyDisplay value={trans.totalAmount} className="font-semibold text-primary" />
