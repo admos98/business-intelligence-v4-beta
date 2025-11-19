@@ -67,6 +67,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
     URL.revokeObjectURL(url);
   };
 
+  const { setActions } = usePageActions();
+
   // Register page actions with Navbar
   useEffect(() => {
     const actions = (

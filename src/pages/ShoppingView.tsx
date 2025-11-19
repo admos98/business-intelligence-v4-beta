@@ -236,7 +236,7 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
     return structuredData;
   };
 
-  const handleDownloadDailyReport = async () => {
+  const handleDownloadDailyReport = useCallback(async () => {
     if (!list) {
       addToast(t.syncError, 'error');
       return;
@@ -261,9 +261,9 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
     } finally {
         setIsPdfLoading(false);
     }
-  };
+  }, [list, boughtItems, vendorMap, totalCost, totalDue, addToast]);
 
-  const handleExportCsv = () => {
+  const handleExportCsv = useCallback(() => {
     if (!list) {
       addToast(t.syncError, 'error');
       return;
@@ -295,9 +295,9 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
     a.click();
     URL.revokeObjectURL(url);
     addToast('CSV با موفقیت صادر شد', 'success');
-  };
+  }, [list, vendorMap, addToast]);
 
-  const handleExportJson = () => {
+  const handleExportJson = useCallback(() => {
       if (!list) {
         addToast(t.syncError, 'error');
         return;
@@ -318,10 +318,11 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
       a.click();
       URL.revokeObjectURL(url);
       addToast(t.exportJsonSuccess, 'success');
-  };
+  }, [list, vendorMap, addToast]);
 
 
   const pendingItems = list ? list.items.filter(item => item.status === ItemStatus.Pending) : [];
+  const boughtItems = list ? list.items.filter(item => item.status === ItemStatus.Bought) : [];
 
   const groupItemsByCategory = (items: ShoppingItem[]): Record<string, ShoppingItem[]> => {
     return items.reduce((acc, item) => {
@@ -340,6 +341,7 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
   const totalCost = useMemo(() => boughtItems.reduce((sum, item) => sum + (item.paidPrice || 0), 0), [boughtItems]);
   const totalDue = useMemo(() => boughtItems.filter(i => i.paymentStatus === PaymentStatus.Due).reduce((sum, item) => sum + (item.paidPrice || 0), 0), [boughtItems]);
   const totalEstimatedCost = useMemo(() => pendingItems.reduce((sum, item) => sum + (item.estimatedPrice || 0), 0), [pendingItems]);
+
   const { setActions } = usePageActions();
 
   // Register page actions with Navbar
