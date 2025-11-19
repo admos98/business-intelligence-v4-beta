@@ -184,10 +184,16 @@ export interface POSItem {
     options?: Array<{
       id: string;
       name: string;
-      priceModifier?: number;
+      label?: string; // Display label (falls back to name)
+      priceModifier?: number; // Legacy: price modifier
+      price?: number; // Fixed price for this option
+      isCustomAmount?: boolean; // If true, price is calculated per unit
+      unit?: string; // Unit for custom amount (e.g., "گرم", "عدد")
+      pricePerUnit?: number; // Price per unit for custom amount
     }>;
     unit?: string; // For number type (e.g., "گرم", "عدد")
     pricePerUnit?: number; // For number type
+    priceModifier?: number; // For legacy number/text customizations
   }>;
 }
 

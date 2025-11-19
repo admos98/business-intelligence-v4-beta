@@ -118,7 +118,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                   const amount = (v as { amount: number }).amount || 0;
                   return s + (selectedOption.pricePerUnit * amount);
                 }
-                return s + selectedOption.price;
+                // Use price if available, otherwise fall back to priceModifier
+                return s + (selectedOption.price ?? selectedOption.priceModifier ?? 0);
               }
             }
 
@@ -139,7 +140,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
             if (typeof custValue === 'object' && 'optionId' in custValue) {
               const opt = cust.options.find(o => o.id === custValue.optionId);
               if (opt) {
-                let optLabel = opt.label;
+                let optLabel = opt.label || opt.name;
                 if (opt.isCustomAmount && custValue.amount) {
                   optLabel += ` ${custValue.amount}${opt.unit || ''}`;
                 }
@@ -148,7 +149,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
             } else if (typeof custValue === 'string') {
               const opt = cust.options.find(o => o.id === custValue);
               if (opt) {
-                custParts.push(opt.label);
+                custParts.push(opt.label || opt.name);
               }
             }
           } else if (custValue) {
@@ -448,8 +449,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const [newItemCustomizations, setNewItemCustomizations] = useState<{
     id: string;
     name: string;
-    type: 'select' | 'number' | 'text';
-    options?: { id: string; label: string; price: number; isCustomAmount?: boolean; unit?: string; pricePerUnit?: number }[];
+    type: 'choice' | 'number' | 'text';
+    options?: { id: string; name: string; label?: string; price?: number; priceModifier?: number; isCustomAmount?: boolean; unit?: string; pricePerUnit?: number }[];
     priceModifier?: number;
   }[]>([]);
 
@@ -463,7 +464,6 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       name: newItemForm.name,
       category: newItemForm.category,
       sellPrice: newItemForm.sellPrice,
-      unit: Unit.Piece,
       variants: undefined, // No variants - only base item customizations
       customizations: newItemCustomizations.length > 0 ? newItemCustomizations.map(c => ({
         id: c.id,
@@ -471,8 +471,10 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
         type: c.type,
         options: c.options?.map(opt => ({
           id: opt.id,
+          name: opt.name,
           label: opt.label,
           price: opt.price,
+          priceModifier: opt.priceModifier,
           isCustomAmount: opt.isCustomAmount,
           unit: opt.unit,
           pricePerUnit: opt.pricePerUnit
@@ -498,8 +500,10 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       type: c.type,
       options: c.options?.map(opt => ({
         id: opt.id,
-        label: opt.label,
+        name: opt.name,
+        label: opt.label || opt.name,
         price: opt.price,
+        priceModifier: opt.priceModifier,
         isCustomAmount: opt.isCustomAmount,
         unit: opt.unit,
         pricePerUnit: opt.pricePerUnit
@@ -530,8 +534,10 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
         type: c.type,
         options: c.options?.map(opt => ({
           id: opt.id,
+          name: opt.name,
           label: opt.label,
           price: opt.price,
+          priceModifier: opt.priceModifier,
           isCustomAmount: opt.isCustomAmount,
           unit: opt.unit,
           pricePerUnit: opt.pricePerUnit
@@ -1120,10 +1126,10 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                             </div>
                             <select
                               value={cust.type}
-                              onChange={e => setNewItemCustomizations(prev => prev.map((c, i) => i === custIdx ? { ...c, type: e.target.value as 'select' | 'number' | 'text' } : c))}
+                              onChange={e => setNewItemCustomizations(prev => prev.map((c, i) => i === custIdx ? { ...c, type: e.target.value as 'choice' | 'number' | 'text' } : c))}
                               className="ml-2 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
                             >
-                              <option value="select">انتخابی</option>
+                              <option value="choice">انتخابی</option>
                               <option value="number">عدد</option>
                               <option value="text">متن</option>
                             </select>
@@ -1132,20 +1138,23 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                             </Button>
                           </div>
 
-                          {/* Options for select type */}
-                          {cust.type === 'select' && (
+                          {/* Options for choice type */}
+                          {cust.type === 'choice' && (
                             <div className="mt-3 space-y-2">
                               <label className="text-xs text-secondary block mb-1">گزینه‌ها:</label>
                               {cust.options?.map((opt, optIdx) => (
                                 <div key={opt.id} className="flex gap-2 items-center">
                                   <input
-                                    value={opt.label}
-                                    onChange={e => setNewItemCustomizations(prev => prev.map((c, i) =>
-                                      i === custIdx ? {
-                                        ...c,
-                                        options: c.options?.map((o, oi) => oi === optIdx ? { ...o, label: e.target.value } : o) || []
-                                      } : c
-                                    ))}
+                                    value={opt.label || opt.name || ''}
+                                    onChange={e => {
+                                      const newValue = e.target.value;
+                                      setNewItemCustomizations(prev => prev.map((c, i) =>
+                                        i === custIdx ? {
+                                          ...c,
+                                          options: c.options?.map((o, oi) => oi === optIdx ? { ...o, label: newValue, name: o.name || newValue } : o) || []
+                                        } : c
+                                      ));
+                                    }}
                                     className="flex-1 px-2 py-1 bg-surface border border-border rounded text-sm"
                                     placeholder="برچسب (مثال: 8/20 Robusta)"
                                   />
@@ -1219,7 +1228,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                                   setNewItemCustomizations(prev => prev.map((c, i) =>
                                     i === custIdx ? {
                                       ...c,
-                                      options: [...(c.options || []), { id: newOptId, label: '', price: 0 }]
+                                      options: [...(c.options || []), { id: newOptId, name: '', label: '', price: 0 }]
                                     } : c
                                   ));
                                 }}
@@ -1237,7 +1246,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                           setNewItemCustomizations(prev => [...prev, {
                             id: `cust-${Date.now()}-${Math.random()}`,
                             name: '',
-                            type: 'select',
+                            type: 'choice',
                             options: []
                           }]);
                         }}
@@ -1604,7 +1613,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                     <div key={c.id || c.name} className="space-y-2">
                       <label className="text-sm font-medium text-primary block">{c.name}</label>
 
-                      {c.type === 'select' && c.options && c.options.length > 0 ? (
+                      {c.type === 'choice' && c.options && c.options.length > 0 ? (
                         <div className="space-y-2">
                           {c.options.map(opt => {
                             const isSelected = modalCustomizations[c.name] === opt.id ||
@@ -1633,12 +1642,12 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                                   }`}
                                 >
                                   <div className="flex justify-between items-center">
-                                    <span>{opt.label}</span>
-                                    {opt.price !== 0 && (
+                                    <span>{opt.label || opt.name}</span>
+                                    {(opt.price !== undefined && opt.price !== 0) || (opt.priceModifier !== undefined && opt.priceModifier !== 0) ? (
                                       <span className="text-xs">
-                                        {opt.price > 0 ? '+' : ''}{opt.price.toLocaleString()} ریال
+                                        {((opt.price ?? opt.priceModifier ?? 0) > 0 ? '+' : '')}{(opt.price ?? opt.priceModifier ?? 0).toLocaleString()} ریال
                                       </span>
-                                    )}
+                                    ) : null}
                                   </div>
                                 </button>
 
