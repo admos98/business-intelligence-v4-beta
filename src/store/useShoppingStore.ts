@@ -127,15 +127,15 @@ const emptyState = {
 };
 
 // --- Debounced save function ---
-let debounceTimer: number | null = null;
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 const debouncedSaveData = (state: FullShoppingState) => {
     if (typeof window === 'undefined') {
         return;
     }
     if (debounceTimer !== null) {
-        window.clearTimeout(debounceTimer);
+        clearTimeout(debounceTimer);
     }
-    debounceTimer = window.setTimeout(() => {
+    debounceTimer = setTimeout(() => {
         const { currentUser, isHydrating } = state;
         // Do not save if no user or during initial hydration.
         if (!currentUser || isHydrating) {
@@ -157,6 +157,8 @@ const debouncedSaveData = (state: FullShoppingState) => {
         saveData(dataToSave).catch((err: unknown) => {
             const errorMessage = err instanceof Error ? err.message : "Auto-save failed";
             console.error("Auto-save failed:", errorMessage);
+            // Note: In a production app, you might want to show a toast notification to the user
+            // or implement a retry mechanism here
         });
     }, 1500); // Debounce for 1.5 seconds
 };
@@ -196,12 +198,27 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           try {
               const data = await fetchData();
               if (data && data.lists) {
+                  // Validate itemInfoMap structure
+                  let validatedItemInfoMap: Record<string, { unit: Unit; category: string }> = {};
+                  if (data.itemInfoMap && typeof data.itemInfoMap === 'object') {
+                      for (const [key, value] of Object.entries(data.itemInfoMap)) {
+                          if (value && typeof value === 'object' && 'unit' in value && 'category' in value) {
+                              const unit = value.unit as string;
+                              const category = value.category as string;
+                              // Validate unit is a valid Unit enum value
+                              if (Object.values(Unit).includes(unit as Unit)) {
+                                  validatedItemInfoMap[key] = { unit: unit as Unit, category };
+                              }
+                          }
+                      }
+                  }
+
                   const hydratedState: Partial<FullShoppingState> = {
                       lists: data.lists,
                       customCategories: data.customCategories,
                       vendors: data.vendors,
                       categoryVendorMap: data.categoryVendorMap,
-                      itemInfoMap: data.itemInfoMap && typeof data.itemInfoMap === 'object' ? (data.itemInfoMap as Record<string, { unit: Unit; category: string }>) : {},
+                      itemInfoMap: validatedItemInfoMap,
                       posItems: data.posItems || [],
                       posCategories: data.posCategories || [],
                       sellTransactions: data.sellTransactions || [],
@@ -280,7 +297,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const latestInfo = get().getLatestPurchaseInfo(name, unit);
 
         const newItem: ShoppingItem = {
-            id: `item-${Date.now()}`,
+            id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
             name,
             amount: latestInfo.lastAmount || 1,
             unit,
@@ -306,8 +323,9 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const targetListId = get().createList(parsedDate);
         const targetList = get().lists.find(l => l.id === targetListId)!;
 
+        const baseTimestamp = Date.now();
         const newShoppingItems: ShoppingItem[] = ocrItems.map((item, index) => ({
-            id: `item-${Date.now()}-${index}`,
+            id: `item-${baseTimestamp}-${index}-${Math.random().toString(36).substr(2, 5)}`,
             name: item.name,
             amount: item.quantity,
             unit: item.unit || Unit.Piece,
@@ -421,10 +439,15 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
               }));
 
               const newItemInfoMap = { ...state.itemInfoMap };
-              if (originalName !== updates.name && newItemInfoMap[originalName]) {
-                  delete newItemInfoMap[originalName];
+              // Use composite key (name-unit) to avoid collisions
+              const originalKey = `${originalName}-${originalUnit}`;
+              const newKey = `${updates.name}-${updates.unit}`;
+
+              // Only delete if the key exists and we're changing the name or unit
+              if ((originalName !== updates.name || originalUnit !== updates.unit) && newItemInfoMap[originalKey]) {
+                  delete newItemInfoMap[originalKey];
               }
-              newItemInfoMap[updates.name] = { unit: updates.unit, category: updates.category };
+              newItemInfoMap[newKey] = { unit: updates.unit, category: updates.category };
 
               return { lists: newLists, itemInfoMap: newItemInfoMap };
           });
@@ -444,7 +467,9 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         }
 
         if (name && unit && category) {
-            stateUpdates.itemInfoMap = { ...get().itemInfoMap, [name.trim()]: { unit, category } };
+            // Use composite key to avoid collisions between items with same name but different units
+            const key = `${name.trim()}-${unit}`;
+            stateUpdates.itemInfoMap = { ...get().itemInfoMap, [key]: { unit, category } };
             stateChanged = true;
         }
 
@@ -516,26 +541,38 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         return result.sort((a,b) => a.name.localeCompare(b.name, 'fa'));
       },
       getItemInfo: (name: string) => {
-        return get().itemInfoMap[name];
+        // Try direct lookup first (for backward compatibility)
+        const direct = get().itemInfoMap[name];
+        if (direct) return direct;
+
+        // Try composite keys (name-unit) for all units
+        for (const [key, value] of Object.entries(get().itemInfoMap)) {
+          if (key.startsWith(`${name}-`)) {
+            return value;
+          }
+        }
+        return undefined;
       },
       getLatestPricePerUnit: (name, unit) => {
         return get().getLatestPurchaseInfo(name, unit).pricePerUnit;
       },
       getLatestPurchaseInfo: (name, unit) => {
           const allPurchasesOfItem = get().lists
-              .flatMap(list => list.items.map(item => ({ ...item, purchaseDate: new Date(list.createdAt) })))
-              .filter(item => item.name === name && item.unit === unit && item.status === ItemStatus.Bought && item.paidPrice && item.purchasedAmount && item.purchasedAmount > 0)
+              .flatMap(list => list.items
+                  .filter(item => item.name === name && item.unit === unit && item.status === ItemStatus.Bought && item.paidPrice && item.purchasedAmount && item.purchasedAmount > 0)
+                  .map(item => ({ ...item, purchaseDate: new Date(list.createdAt) }))
+              )
               .sort((a, b) => b.purchaseDate.getTime() - a.purchaseDate.getTime());
 
           if (allPurchasesOfItem.length > 0) {
               const latest = allPurchasesOfItem[0];
-                            if (latest.paidPrice && latest.purchasedAmount && latest.purchasedAmount > 0) {
-              return {
-                  pricePerUnit: latest.paidPrice! / latest.purchasedAmount!,
-                  vendorId: latest.vendorId,
-                  lastAmount: latest.purchasedAmount
-                            }
-              };
+              if (latest.paidPrice && latest.purchasedAmount && latest.purchasedAmount > 0) {
+                  return {
+                      pricePerUnit: latest.paidPrice / latest.purchasedAmount,
+                      vendorId: latest.vendorId,
+                      lastAmount: latest.purchasedAmount
+                  };
+              }
           }
           return {};
       },
@@ -700,7 +737,13 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const priceIndexHistory: InflationPoint[] = [];
         const monthlySpending = new Map<string, { totalSpend: number, weightedPriceSum: number }>();
         const baseMonthPrices = new Map<string, number>();
-        const firstMonthKey = `${new Date(allPurchases[0].purchaseDate).getFullYear()}/${String(new Date(allPurchases[0].purchaseDate).getMonth() + 1).padStart(2, '0')}`;
+
+        if (allPurchases.length === 0) {
+            return null;
+        }
+
+        const firstPurchaseDate = allPurchases[0].purchaseDate;
+        const firstMonthKey = `${firstPurchaseDate.getFullYear()}/${String(firstPurchaseDate.getMonth() + 1).padStart(2, '0')}`;
 
         allPurchases.forEach(item => {
             const itemKey = `${item.name}-${item.unit}`;
@@ -968,15 +1011,27 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           const recentPurchases = get().getRecentPurchases(50);
           const recentItemSet = new Set(recentPurchases.map(p => `${p.name}-${p.unit}`));
 
+          // Pre-compute latest purchase dates for all items to avoid repeated nested operations
+          const latestPurchaseDates = new Map<string, Date>();
+          get().lists.forEach(list => {
+            const listDate = new Date(list.createdAt);
+            list.items.forEach(item => {
+              if (item.status === ItemStatus.Bought) {
+                const key = `${item.name}-${item.unit}`;
+                const existing = latestPurchaseDates.get(key);
+                if (!existing || listDate > existing) {
+                  latestPurchaseDates.set(key, listDate);
+                }
+              }
+            });
+          });
+
           return allItems
             .map(item => {
               const isRecent = recentItemSet.has(`${item.name}-${item.unit}`);
-              const lastPurchase = get().getLatestPurchaseInfo(item.name, item.unit);
-              const daysSincePurchase = lastPurchase.pricePerUnit
-                ? Math.floor((Date.now() - new Date(get().lists
-                    .flatMap(l => l.items)
-                    .filter(i => i.name === item.name && i.unit === item.unit && i.status === ItemStatus.Bought)
-                    .sort((a, b) => new Date(b.purchaseDate || 0).getTime() - new Date(a.purchaseDate || 0).getTime())[0]?.purchaseDate || 0).getTime()) / (24 * 60 * 60 * 1000))
+              const latestDate = latestPurchaseDates.get(`${item.name}-${item.unit}`);
+              const daysSincePurchase = latestDate
+                ? Math.floor((Date.now() - latestDate.getTime()) / (24 * 60 * 60 * 1000))
                 : 999;
 
               let score = 0.5;
@@ -1297,7 +1352,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 };
 
                 set(cleanedData as Partial<FullShoppingState>);
-                await saveData(cleanedData as any);
+                await saveData(cleanedData);
             } else {
                 throw new Error("Invalid data format: lists must be an array");
             }
@@ -1406,7 +1461,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       // ========== SELL TRANSACTION ACTIONS ==========
       addSellTransaction: (transaction) => {
         const newTransaction: SellTransaction = {
-          id: `trans-${Date.now()}`,
+          id: `trans-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           date: new Date().toISOString(),
           ...transaction,
         };
@@ -1461,6 +1516,21 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       },
 
       deleteSellTransaction: (transactionId) => {
+        const transaction = get().sellTransactions.find(t => t.id === transactionId);
+        if (transaction) {
+          // Restore stock for each item in the deleted transaction
+          transaction.items.forEach(item => {
+            const posItem = get().posItems.find(p => p.id === item.posItemId);
+            if (posItem && posItem.recipeId) {
+              const recipe = get().recipes.find(r => r.id === posItem.recipeId);
+              if (recipe) {
+                recipe.ingredients.forEach(ingredient => {
+                  get().updateStock(ingredient.itemName, ingredient.itemUnit, ingredient.requiredQuantity * item.quantity);
+                });
+              }
+            }
+          });
+        }
         set(state => ({ sellTransactions: state.sellTransactions.filter(trans => trans.id !== transactionId) }));
         debouncedSaveData(get());
       },

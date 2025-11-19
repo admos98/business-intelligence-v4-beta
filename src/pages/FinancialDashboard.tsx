@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Header from '../components/common/Header';
 import { useShoppingStore } from '../store/useShoppingStore';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
@@ -24,9 +24,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
     return getFinancialOverview(period);
   }, [period, getFinancialOverview]);
 
-  const isLoading = false;
-
-  const handleExportFinancialJson = () => {
+  const handleExportFinancialJson = useCallback(() => {
     if (!financialData) {
       return;
     }
@@ -38,9 +36,9 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
     a.download = `financial_report_${period}_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  };
+  }, [financialData, period]);
 
-  const handleExportFinancialCsv = () => {
+  const handleExportFinancialCsv = useCallback(() => {
     if (!financialData) {
       return;
     }
@@ -65,7 +63,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
     a.download = `financial_report_${period}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  };
+  }, [financialData, period]);
 
   const { setActions } = usePageActions();
 
@@ -109,7 +107,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
           ))}
         </div>
 
-        {isLoading || !financialData ? (
+        {!financialData ? (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             {[...Array(4)].map((_, i) => (
               <SkeletonLoader key={i} lines={3} />
@@ -156,7 +154,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
                   </p>
                   <div className="space-y-1 text-xs text-secondary">
                     <p>• بر اساس دستور‌های پخت</p>
-                    <p>• واقعی: {((financialData.recipes.totalCostOfGoods / financialData.sell.totalRevenue) * 100).toFixed(1)}% درآمد</p>
+                    <p>• واقعی: {financialData.sell.totalRevenue > 0 ? ((financialData.recipes.totalCostOfGoods / financialData.sell.totalRevenue) * 100).toFixed(1) : '0'}% درآمد</p>
                   </div>
                 </div>
               </Card>
@@ -217,7 +215,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
                       <CurrencyDisplay value={financialData.recipes.totalCostOfGoods} className="font-bold text-yellow-600 dark:text-yellow-400" />
                     </div>
                     <div className="w-full bg-background rounded-full h-2">
-                      <div className="bg-yellow-500 rounded-full h-2" style={{ width: `${Math.min((financialData.recipes.totalCostOfGoods / financialData.buy.totalSpend) * 100, 100)}%` }} />
+                      <div className="bg-yellow-500 rounded-full h-2" style={{ width: `${financialData.buy.totalSpend > 0 ? Math.min((financialData.recipes.totalCostOfGoods / financialData.buy.totalSpend) * 100, 100) : 0}%` }} />
                     </div>
                   </div>
 
@@ -246,7 +244,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
                     <CurrencyDisplay value={financialData.recipes.totalCostOfGoods} />
                   </p>
                   <p className="text-xs text-secondary">
-                    {((financialData.recipes.totalCostOfGoods / financialData.sell.totalRevenue) * 100).toFixed(1)}% درآمد
+                    {financialData.sell.totalRevenue > 0 ? ((financialData.recipes.totalCostOfGoods / financialData.sell.totalRevenue) * 100).toFixed(1) : '0'}% درآمد
                   </p>
                 </div>
 
@@ -308,7 +306,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
                 <p>
                   <span className="font-bold text-primary">خلاصه:</span>{' '}
                   {financialData.profitAnalysis.grossProfit > 0
-                    ? `در این دوره، شما ${((financialData.profitAnalysis.grossProfit / financialData.sell.totalRevenue) * 100).toFixed(1)}% حاشیه سود کسب کرده‌اید.`
+                    ? `در این دوره، شما ${financialData.sell.totalRevenue > 0 ? ((financialData.profitAnalysis.grossProfit / financialData.sell.totalRevenue) * 100).toFixed(1) : '0'}% حاشیه سود کسب کرده‌اید.`
                     : 'در این دوره، هزینه‌ها بیشتر از درآمد است. لطفاً استراتژی قیمت‌گذاری خود را بررسی کنید.'}
                 </p>
                 <p className="text-secondary text-xs">

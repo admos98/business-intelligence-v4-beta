@@ -132,8 +132,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             res.setHeader('Allow', ['GET', 'PATCH']);
             return res.status(405).end(`Method ${req.method} Not Allowed`);
         }
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('API handler error:', error);
-        return res.status(500).json({ error: 'An internal server error occurred.', details: error.message });
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        return res.status(500).json({ error: 'An internal server error occurred.', details: errorMessage });
     }
 }

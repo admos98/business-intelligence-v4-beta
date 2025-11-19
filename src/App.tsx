@@ -34,7 +34,8 @@ const App: React.FC = () => {
     if (currentUser) {
       hydrateFromCloud();
     }
-  }, [currentUser, hydrateFromCloud]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]); // hydrateFromCloud is stable from zustand store
 
 
   const handleSelectList = (listId: string) => {

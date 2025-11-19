@@ -149,7 +149,7 @@ async function handleParseReceipt(ai: GoogleGenAI, payload: { imageBase64: strin
   throw new Error("Gemini response validation failed: missing items array or date.");
 }
 
-async function handleGetAnalysisInsights(ai: GoogleGenAI, payload: { question: string, context: string, data: any[] }): Promise<string> {
+async function handleGetAnalysisInsights(ai: GoogleGenAI, payload: { question: string, context: string, data: unknown[] }): Promise<string> {
     // Validate payload structure
     if (
         !payload ||
@@ -399,7 +399,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 data = await handleParseReceipt(ai, payload as { imageBase64: string; categories: string[] });
                 break;
             case 'getAnalysisInsights':
-                data = await handleGetAnalysisInsights(ai, payload as { question: string; context: string; data: any[] });
+                data = await handleGetAnalysisInsights(ai, payload as { question: string; context: string; data: unknown[] });
                 break;
             case 'generateReportSummary':
                 data = await handleGenerateReportSummary(ai, payload as { totalSpending: number; categorySpending: Record<string, number> });
