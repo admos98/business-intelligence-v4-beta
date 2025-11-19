@@ -49,105 +49,89 @@ export enum PaymentMethod {
 export interface Vendor {
   id: string;
   name: string;
-  contactPerson?: string;
   phone?: string;
   address?: string;
+  notes?: string;
 }
-
 
 export interface ShoppingItem {
   id: string;
   name: string;
-  amount: number;
   unit: Unit;
-  status: ItemStatus;
+  quantity: number;
   category: string;
+  status: ItemStatus;
   paidPrice?: number;
-  purchasedAmount?: number;
+  paymentStatus: PaymentStatus;
   vendorId?: string;
-  paymentStatus?: PaymentStatus;
-  paymentMethod?: PaymentMethod;
-  estimatedPrice?: number;
+  notes?: string;
+  receiptImage?: string;
 }
 
 export interface ShoppingList {
   id: string;
   name: string;
-  createdAt: string; // Storing as ISO string for easier serialization
+  createdAt: string; // ISO string
   items: ShoppingItem[];
 }
 
-export interface AggregatedShoppingItem {
-  name: string;
-  unit: Unit;
-  category: string;
-  vendorId?: string;
-  paymentMethod?: PaymentMethod;
-  paymentStatus?: PaymentStatus;
-  totalAmount: number;
-  totalPrice: number;
-  purchaseHistory: { date: Date, pricePerUnit: number }[];
-}
-
-export interface OcrParsedItem {
-    name: string;
-    quantity: number;
-    price: number;
-    unit?: Unit;
-    suggestedCategory?: string;
-}
-
 export interface OcrResult {
-  date: string; // Jalali date string YYYY/MM/DD
-  items: OcrParsedItem[];
+  items: Array<{
+    name: string;
+    unit: Unit;
+    quantity: number;
+    pricePerUnit: number;
+    totalPrice: number;
+  }>;
+  vendorName?: string;
+  date?: string;
 }
 
+export interface PendingPaymentItem {
+  itemName: string;
+  unit: Unit;
+  totalDue: number;
+  vendorId?: string;
+  vendorName?: string;
+  listIds: string[];
+}
 
-// shared/types.ts
 export interface SmartSuggestion {
   name: string;
   unit: Unit;
   category: string;
-  lastPurchaseDate: string;
-  avgPurchaseCycleDays?: number; // <-- Now optional!
   reason: string;
-  priority: 'high' | 'medium' | 'low';
+  score: number;
 }
 
-
-export interface PendingPaymentItem extends ShoppingItem {
-    listId: string;
-    listName: string;
-    purchaseDate: string;
-}
-
-export interface RecentPurchaseItem extends ShoppingItem {
-    listId: string;
-    purchaseDate: string;
+export interface RecentPurchaseItem {
+  name: string;
+  unit: Unit;
+  lastPurchaseDate: Date;
+  lastPricePerUnit: number;
+  purchaseCount: number;
 }
 
 export interface MasterItem {
   name: string;
   unit: Unit;
   category: string;
-  lastPricePerUnit: number;
-  totalQuantity: number;
-  totalSpend: number;
   purchaseCount: number;
+  lastPurchaseDate?: Date;
 }
-
 
 export interface SummaryData {
   kpis: {
     totalSpend: number;
     totalItems: number;
     avgDailySpend: number;
-    topCategory: { name: string; amount: number } | null;
-    topVendor: { name: string; amount: number } | null;
+    topCategory: { name: string; spend: number } | null;
+    topVendor: { name: string; spend: number } | null;
   };
   charts: {
-    spendingOverTime: { labels: string[]; data: number[] };
-    spendingByCategory: { labels: string[]; data: number[] };
+    spendOverTime: { labels: string[]; data: number[] };
+    spendByCategory: { labels: string[]; data: number[] };
+    spendByVendor: { labels: string[]; data: number[] };
   };
   period: {
     startDate: Date;
@@ -155,82 +139,67 @@ export interface SummaryData {
   };
 }
 
-export interface User {
-  id: string;
-  username: string;
-  passwordHash: string;
-  salt: string;
-}
-
-export interface AuthSlice {
-  users: User[];
-  currentUser: User | null;
-  login: (username: string, password: string) => Promise<boolean>;
-  logout: () => void;
-}
-
-export interface ShoppingState {
-  isHydrating: boolean;
+export interface InflationDetail {
+  itemName: string;
+  unit: Unit;
+  oldPrice: number;
+  newPrice: number;
+  percentageChange: number;
+  daysBetween: number;
 }
 
 export interface InflationPoint {
-  period: string; // e.g., '1403/05'
-  priceIndex: number; // 100 for baseline, 110 for 10% inflation etc.
-}
-
-export interface InflationDetail {
-    name: string; // Item or Category name
-    startPrice: number;
-    endPrice: number;
-    changePercentage: number;
+  date: string; // ISO string
+  averageInflation: number;
+  itemCount: number;
 }
 
 export interface InflationData {
-    overallChange: number;
-    priceIndexHistory: InflationPoint[];
-    topItemRises: InflationDetail[];
-    topCategoryRises: InflationDetail[];
+  averageInflation: number;
+  totalItems: number;
+  details: InflationDetail[];
+  timeline: InflationPoint[];
 }
 
 // ============================================
-// SELL / POS TYPES
+// POS / SELL TYPES
 // ============================================
 
 export interface POSItem {
   id: string;
   name: string;
   category: string;
-  sellPrice: number; // Price per unit
-  unit: Unit;
-  isRecipe?: boolean; // If true, this item is sold via recipe, not raw item
-  recipeId?: string; // Link to recipe if isRecipe=true
-  customizations?: POSCustomization[]; // E.g., syrup options, size modifiers
-  variants?: POSVariant[]; // Preset variants for fast POS entry
+  sellPrice: number;
+  recipeId?: string; // Link to recipe if this item is made from ingredients
+  variants?: Array<{
+    id: string;
+    name: string;
+    priceModifier: number; // Added/subtracted from base price
+  }>;
+  customizations?: Array<{
+    id: string;
+    name: string;
+    type: 'text' | 'number' | 'choice';
+    required?: boolean;
+    options?: Array<{
+      id: string;
+      name: string;
+      priceModifier?: number;
+    }>;
+    unit?: string; // For number type (e.g., "گرم", "عدد")
+    pricePerUnit?: number; // For number type
+  }>;
 }
 
-export interface POSCustomizationOption {
+export interface SellTransactionItem {
   id: string;
-  label: string; // e.g., "8/20 Robusta", "20ml", "No syrup"
-  price: number; // Price for this option
-  isCustomAmount?: boolean; // If true, allows custom amount input
-  unit?: string; // Unit for custom amount (e.g., "ml", "pump")
-  pricePerUnit?: number; // Price per unit for custom amounts
-}
-
-export interface POSCustomization {
-  id: string;
-  name: string; // e.g., "Coffee Type", "Syrup"
-  type: 'select' | 'number' | 'text';
-  options?: POSCustomizationOption[]; // Options with individual prices
-  priceModifier?: number; // Legacy: Additional cost for this customization (deprecated, use options instead)
-}
-
-export interface POSVariant {
-  id: string;
-  name: string; // e.g., "Coffee", "Durup", "Syrup"
-  priceModifier: number; // delta to base price (can be negative)
-  presetCustomizations?: Record<string, string | number>; // e.g., { "Size": "Medium", "Syrup": "Vanilla" }
-  customizations?: POSCustomization[]; // Variant-specific customizations (e.g., coffee lines, decaf, syrup type/amount)
+  posItemId: string;
+  name: string; // Full name including variant and customizations
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  customizationChoices?: Record<string, string | number | { optionId: string; amount: number }>;
+  costOfGoods?: number; // COGS if linked to recipe
 }
 
 export interface SellTransaction {
@@ -247,30 +216,9 @@ export interface SellTransaction {
   originalTransactionId?: string; // Link to original transaction if this is a refund
 }
 
-export interface SellTransactionItem {
-  id: string;
-  posItemId: string;
-  name: string;
-  quantity: number;
-  unitPrice: number;
-  totalPrice: number;
-  customizationChoices?: Record<string, string | number | { optionId: string; amount: number }>; // Customization selections (optionId for select options, amount for custom amounts)
-  costOfGoods?: number; // Calculated raw cost if from recipe
-}
-
 // ============================================
 // RECIPE TYPES
 // ============================================
-
-export interface Recipe {
-  id: string;
-  name: string;
-  category: string;
-  baseSellPrice: number; // Base price, can be overridden per transaction
-  ingredients: RecipeIngredient[];
-  prepNotes?: string;
-  createdAt: string; // ISO string
-}
 
 export interface RecipeIngredient {
   id: string;
@@ -278,6 +226,16 @@ export interface RecipeIngredient {
   itemUnit: Unit; // Unit of bought item
   requiredQuantity: number; // How much of this item is needed
   costPerUnit?: number; // Cached cost; recalculate on use
+}
+
+export interface Recipe {
+  id: string;
+  name: string;
+  category: string;
+  baseSellPrice: number; // Selling price for this recipe/item
+  ingredients: RecipeIngredient[];
+  prepNotes?: string;
+  createdAt: string; // ISO string
 }
 
 // ============================================
@@ -337,4 +295,40 @@ export interface FinancialOverviewData {
     startDate: Date;
     endDate: Date;
   };
+}
+
+// ============================================
+// AUDIT LOG TYPES
+// ============================================
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string; // ISO string
+  action: 'transaction_created' | 'transaction_updated' | 'transaction_deleted' |
+          'item_created' | 'item_updated' | 'item_deleted' |
+          'refund_created' | 'stock_updated' | 'recipe_created' | 'recipe_updated' | 'recipe_deleted';
+  userId?: string;
+  details: {
+    entityId?: string;
+    entityName?: string;
+    changes?: Record<string, { old?: unknown; new?: unknown }>;
+    metadata?: Record<string, unknown>;
+  };
+}
+
+// ============================================
+// SHIFT MANAGEMENT TYPES
+// ============================================
+
+export interface Shift {
+  id: string;
+  startTime: string; // ISO string
+  endTime?: string; // ISO string
+  startingCash: number; // Cash in drawer at shift start
+  endingCash?: number; // Cash in drawer at shift end
+  expectedCash?: number; // Calculated expected cash based on transactions
+  difference?: number; // endingCash - expectedCash (variance)
+  notes?: string;
+  isActive: boolean;
+  transactions: string[]; // Transaction IDs for this shift
 }

@@ -1505,6 +1505,8 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                     sellTransactions: Array.isArray(data.sellTransactions) ? (data.sellTransactions as SellTransaction[]) : [],
                     recipes: Array.isArray(data.recipes) ? (data.recipes as Recipe[]) : [],
                     stockEntries: data.stockEntries && typeof data.stockEntries === 'object' ? (data.stockEntries as Record<string, StockEntry>) : {},
+                    auditLog: Array.isArray(data.auditLog) ? (data.auditLog as AuditLogEntry[]) : [],
+                    shifts: Array.isArray(data.shifts) ? (data.shifts as Shift[]) : [],
                 };
 
                 set(cleanedData as Partial<FullShoppingState>);
@@ -1622,9 +1624,9 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
       getShiftTransactions: (shiftId) => {
         const shift = get().shifts.find(s => s.id === shiftId);
-        if (!shift) return [];
-        return get().sellTransactions.filter(t => shift.transactions.includes(t.id));
-      },,
+          if (!shift) return [];
+          return get().sellTransactions.filter(t => shift.transactions.includes(t.id));
+        },
 
       // ========== POS ITEMS ACTIONS ==========
       addPOSItem: (data) => {
