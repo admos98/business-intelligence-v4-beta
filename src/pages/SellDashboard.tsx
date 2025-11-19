@@ -20,7 +20,7 @@ const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w
 
 const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => {
   const store = useShoppingStore();
-  const { posItems, getPOSItemsByCategory, getFrequentPOSItems, addSellTransaction, addPOSItem, updatePOSItem, deletePOSItem, updateSellTransaction, deleteSellTransaction, addPOSCategory, posCategories: storePosCategories } = store;
+  const { posItems, getPOSItemsByCategory, getFrequentPOSItems, addSellTransaction, addPOSItem, updatePOSItem, deletePOSItem, updateSellTransaction, deleteSellTransaction, addPOSCategory, posCategories: storePosCategories, startShift, endShift, getActiveShift, getShiftTransactions } = store;
 
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [cart, setCart] = useState<Map<string, { posItemId: string; name: string; quantity: number; unitPrice: number; customizations: Record<string, string | number | { optionId: string; amount: number }> }>>(new Map());
@@ -33,6 +33,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const [modalQty, setModalQty] = useState<number>(1);
   const [modalCustomizations, setModalCustomizations] = useState<Record<string, string | number | { optionId: string; amount: number }>>({});
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Cash);
+  const [splitPayments, setSplitPayments] = useState<Array<{ method: PaymentMethod; amount: number }>>([]);
+  const [useSplitPayment, setUseSplitPayment] = useState<boolean>(false);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [showNewItemForm, setShowNewItemForm] = useState(false);
   const [newItemForm, setNewItemForm] = useState({ name: '', category: '', sellPrice: 0 });
@@ -40,6 +42,21 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const [deleteItemConfirm, setDeleteItemConfirm] = useState<string | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<SellTransaction | null>(null);
   const [deleteTransactionConfirm, setDeleteTransactionConfirm] = useState<string | null>(null);
+  const [cancelModalConfirm, setCancelModalConfirm] = useState<boolean>(false);
+  const [refundMode, setRefundMode] = useState<boolean>(false);
+  const [selectedTransactionForRefund, setSelectedTransactionForRefund] = useState<SellTransaction | null>(null);
+  const [showDailySummary, setShowDailySummary] = useState<boolean>(false);
+  const [editingItems, setEditingItems] = useState<SellTransactionItem[]>([]);
+  const [editingPaymentMethod, setEditingPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Cash);
+  const [editingDiscount, setEditingDiscount] = useState<number>(0);
+  const [undoStack, setUndoStack] = useState<Array<{ action: 'add' | 'delete' | 'update'; transaction: SellTransaction; originalTransaction?: SellTransaction }>>([]);
+  const [receiptTemplate, setReceiptTemplate] = useState<{ header?: string; footer?: string; showLogo?: boolean }>({
+    header: 'رسید فروش کافه',
+    footer: 'با تشکر از خرید شما',
+    showLogo: false,
+  });
+  const [showShiftModal, setShowShiftModal] = useState<boolean>(false);
+  const [shiftStartingCash, setShiftStartingCash] = useState<number>(0);
   const { addToast } = useToast();
   const { setActions } = usePageActions();
 
@@ -168,9 +185,25 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   };
 
   const closeModal = () => {
+    // Check if user has entered any data
+    const hasCustomizations = Object.keys(modalCustomizations).length > 0;
+    const hasNonDefaultQty = modalQty !== 1;
+
+    if (hasCustomizations || hasNonDefaultQty) {
+      setCancelModalConfirm(true);
+      return;
+    }
+
     setModalItem(null);
     setModalQty(1);
     setModalCustomizations({});
+  };
+
+  const confirmCloseModal = () => {
+    setModalItem(null);
+    setModalQty(1);
+    setModalCustomizations({});
+    setCancelModalConfirm(false);
   };
 
   const confirmModalAdd = () => {
@@ -208,6 +241,33 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
         handleCompleteSale();
       }
 
+      // Undo (Ctrl+Z or Cmd+Z)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (undoStack.length > 0) {
+          const lastAction = undoStack[undoStack.length - 1];
+          setUndoStack(prev => prev.slice(0, -1));
+
+          if (lastAction.action === 'add') {
+            // Undo add: delete the transaction
+            deleteSellTransaction(lastAction.transaction.id);
+            addToast('فروش حذف شد (Undo)', 'info');
+          } else if (lastAction.action === 'delete') {
+            // Undo delete: restore the transaction
+            const { id, date, ...transactionData } = lastAction.transaction;
+            addSellTransaction(transactionData);
+            addToast('فروش بازگردانده شد (Undo)', 'success');
+          } else if (lastAction.action === 'update' && lastAction.originalTransaction) {
+            // Undo update: restore original transaction
+            updateSellTransaction(lastAction.transaction.id, lastAction.originalTransaction);
+            addToast('تغییرات برگردانده شد (Undo)', 'info');
+          }
+        } else {
+          addToast('چیزی برای برگرداندن وجود ندارد', 'info');
+        }
+        return;
+      }
+
       // Escape to close modals
       if (e.key === 'Escape') {
         if (modalItem) closeModal();
@@ -242,9 +302,9 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   };
 
   const printReceipt = (transaction: SellTransaction) => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer');
     if (!printWindow) {
-      addToast('دسترسی به چاپ رد شد', 'error');
+      addToast('دسترسی به چاپ رد شد. لطفاً پاپ‌آپ‌ها را برای این سایت فعال کنید.', 'error');
       return;
     }
 
@@ -256,6 +316,10 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
         <td style="padding: 0.5rem; border: 1px solid #ddd; text-align: center;">${item.totalPrice.toLocaleString()}</td>
       </tr>
     `).join('');
+
+    const splitPaymentsHtml = transaction.splitPayments && transaction.splitPayments.length > 0
+      ? transaction.splitPayments.map(split => `<p>${split.method}: ${split.amount.toLocaleString()} ریال</p>`).join('')
+      : '';
 
     const html = `
       <!DOCTYPE html>
@@ -269,12 +333,15 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
           table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
           th { background-color: #f0f0f0; padding: 0.5rem; border: 1px solid #ddd; text-align: right; }
           .total { font-size: 1.2rem; font-weight: bold; text-align: left; margin-top: 1rem; }
+          .header { text-align: center; margin-bottom: 1rem; }
+          .footer { text-align: center; margin-top: 1rem; font-size: 0.9rem; color: #666; }
         </style>
       </head>
       <body>
-        <h1>رسید فروش کافه</h1>
+        ${receiptTemplate.header ? `<div class="header"><h1>${receiptTemplate.header}</h1></div>` : '<h1>رسید فروش کافه</h1>'}
         <p style="text-align: center;">تاریخ: ${toJalaliDateString(transaction.date)}</p>
-        <p style="text-align: center;">شماره فاکتور: ${transaction.id.slice(-8)}</p>
+        <p style="text-align: center;">شماره فاکتور: ${transaction.receiptNumber ? `#${transaction.receiptNumber}` : transaction.id.slice(-8)}</p>
+        ${transaction.isRefund ? '<p style="text-align: center; color: red; font-weight: bold;">بازگشت وجه</p>' : ''}
         <table>
           <thead>
             <tr>
@@ -289,10 +356,13 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
           </tbody>
         </table>
         <div class="total">
-          مجموع کل: ${transaction.totalAmount.toLocaleString()} تومان
-          ${transaction.discountAmount ? `<br>تخفیف: ${transaction.discountAmount.toLocaleString()} تومان` : ''}
-          <br>روش پرداخت: ${transaction.paymentMethod}
+          <p>جمع کل: ${transaction.totalAmount.toLocaleString()} ریال</p>
+          ${transaction.discountAmount ? `<p>تخفیف: ${transaction.discountAmount.toLocaleString()} ریال</p>` : ''}
+          ${transaction.splitPayments && transaction.splitPayments.length > 0
+            ? `<div>${splitPaymentsHtml}</div>`
+            : `<p>روش پرداخت: ${transaction.paymentMethod}</p>`}
         </div>
+        ${receiptTemplate.footer ? `<div class="footer">${receiptTemplate.footer}</div>` : ''}
       </body>
       </html>
     `;
@@ -303,32 +373,65 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   };
 
   const handleCompleteSale = () => {
+    // Double-check cart is not empty (defensive programming)
     if (cartArray.length === 0) {
       addToast('سبد خرید خالی است', 'error');
       return;
+    }
+
+    // For refunds, total should be negative
+    if (refundMode) {
+      if (finalTotal >= 0) {
+        addToast('برای بازگشت وجه، مبلغ باید منفی باشد', 'error');
+        return;
+      }
+      if (!selectedTransactionForRefund) {
+        addToast('لطفاً فاکتور اصلی را انتخاب کنید', 'error');
+        return;
+      }
+    } else {
+      // For regular sales, total should not be negative
+      if (finalTotal < 0) {
+        addToast('مبلغ نهایی نمی‌تواند منفی باشد. لطفاً تخفیف را بررسی کنید', 'error');
+        return;
+      }
     }
 
     const items: SellTransactionItem[] = cartArray.map(cartItem => ({
       id: `item-${Date.now()}-${Math.random()}`,
       posItemId: cartItem.posItemId,
       name: cartItem.name,
-      quantity: cartItem.quantity,
+      quantity: refundMode ? -Math.abs(cartItem.quantity) : cartItem.quantity, // Negative quantity for refunds
       unitPrice: cartItem.unitPrice,
-      totalPrice: cartItem.quantity * cartItem.unitPrice,
+      totalPrice: refundMode ? -(cartItem.quantity * cartItem.unitPrice) : (cartItem.quantity * cartItem.unitPrice),
       customizationChoices: cartItem.customizations,
     }));
 
+    // Calculate split payments total
+    const splitTotal = splitPayments.reduce((sum, split) => sum + split.amount, 0);
+    const hasValidSplit = useSplitPayment && splitPayments.length > 0 && Math.abs(splitTotal - finalTotal) < 0.01;
+
+    if (useSplitPayment && !hasValidSplit && !refundMode) {
+      addToast('مجموع پرداخت‌های تقسیم شده باید برابر با مبلغ نهایی باشد', 'error');
+      return;
+    }
+
     const transaction: Omit<SellTransaction, 'id' | 'date'> = {
       items,
-      totalAmount: finalTotal,
+      totalAmount: refundMode ? -Math.abs(finalTotal) : finalTotal,
       paymentMethod,
+      splitPayments: useSplitPayment && hasValidSplit ? splitPayments : undefined,
       discountAmount: discountAmount > 0 ? discountAmount : undefined,
+      isRefund: refundMode,
+      originalTransactionId: refundMode && selectedTransactionForRefund ? selectedTransactionForRefund.id : undefined,
     };
 
     const transactionId = addSellTransaction(transaction);
     setCart(new Map());
     setDiscountAmount(0);
-    addToast('فروش ثبت شد', 'success');
+    setRefundMode(false);
+    setSelectedTransactionForRefund(null);
+    addToast(refundMode ? 'بازگشت وجه ثبت شد' : 'فروش ثبت شد', 'success');
 
     // Auto-print receipt
     if (transactionId) {
@@ -453,7 +556,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const handlePrintCart = useCallback(() => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      addToast('دسترسی به چاپ رد شد', 'error');
+      addToast('لطفاً اجازه باز کردن پنجره جدید را به مرورگر بدهید و دوباره تلاش کنید', 'error');
       return;
     }
 
@@ -544,10 +647,193 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     addToast('CSV فروش‌ها صادر شد', 'success');
   }, [store.sellTransactions, addToast]);
 
+  // Get low stock alerts
+  const lowStockItems = useMemo(() => {
+    const lowStock: Array<{ name: string; unit: Unit; currentStock: number; recipeId?: string }> = [];
+    const stockThreshold = 10; // Alert if stock is below this amount
+
+    // Check stock for all items used in recipes
+    store.recipes.forEach(recipe => {
+      recipe.ingredients.forEach(ingredient => {
+        const currentStock = store.getStock(ingredient.itemName, ingredient.itemUnit);
+        if (currentStock < stockThreshold) {
+          // Avoid duplicates
+          if (!lowStock.some(item => item.name === ingredient.itemName && item.unit === ingredient.itemUnit)) {
+            lowStock.push({
+              name: ingredient.itemName,
+              unit: ingredient.itemUnit,
+              currentStock,
+              recipeId: recipe.id,
+            });
+          }
+        }
+      });
+    });
+
+    return lowStock.sort((a, b) => a.currentStock - b.currentStock);
+  }, [store.recipes, store.getStock, store.stockEntries]);
+
+  // Calculate daily summary
+  const dailySummary = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const todayTransactions = store.sellTransactions.filter(trans => {
+      const transDate = new Date(trans.date);
+      return transDate >= today && transDate < tomorrow && !trans.isRefund;
+    });
+
+    const todayRefunds = store.sellTransactions.filter(trans => {
+      const transDate = new Date(trans.date);
+      return transDate >= today && transDate < tomorrow && trans.isRefund;
+    });
+
+    const totalRevenue = todayTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
+    const totalRefunds = Math.abs(todayRefunds.reduce((sum, t) => sum + t.totalAmount, 0));
+    const netRevenue = totalRevenue - totalRefunds;
+
+    const paymentBreakdown = {
+      [PaymentMethod.Cash]: 0,
+      [PaymentMethod.Card]: 0,
+      [PaymentMethod.Transfer]: 0,
+    };
+
+    todayTransactions.forEach(trans => {
+      if (trans.splitPayments && trans.splitPayments.length > 0) {
+        trans.splitPayments.forEach(split => {
+          paymentBreakdown[split.method] = (paymentBreakdown[split.method] || 0) + split.amount;
+        });
+      } else {
+        paymentBreakdown[trans.paymentMethod] = (paymentBreakdown[trans.paymentMethod] || 0) + trans.totalAmount;
+      }
+    });
+
+    const itemBreakdown = new Map<string, { quantity: number; revenue: number }>();
+    todayTransactions.forEach(trans => {
+      trans.items.forEach(item => {
+        const key = item.name;
+        const existing = itemBreakdown.get(key) || { quantity: 0, revenue: 0 };
+        itemBreakdown.set(key, {
+          quantity: existing.quantity + Math.abs(item.quantity),
+          revenue: existing.revenue + Math.abs(item.totalPrice),
+        });
+      });
+    });
+
+    const topItems = Array.from(itemBreakdown.entries())
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    return {
+      date: today,
+      totalTransactions: todayTransactions.length,
+      totalRefunds: todayRefunds.length,
+      totalRevenue,
+      totalRefundsAmount: totalRefunds,
+      netRevenue,
+      paymentBreakdown,
+      topItems,
+      transactions: todayTransactions,
+      refunds: todayRefunds,
+    };
+  }, [store.sellTransactions]);
+
+  const handlePrintDailySummary = useCallback(() => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      addToast('لطفاً اجازه باز کردن پنجره جدید را به مرورگر بدهید', 'error');
+      return;
+    }
+
+    const paymentRows = Object.entries(dailySummary.paymentBreakdown)
+      .map(([method, amount]) => `<tr><td>${method}</td><td>${amount.toLocaleString()} ریال</td></tr>`)
+      .join('');
+
+    const topItemsRows = dailySummary.topItems
+      .map(item => `<tr><td>${item.name}</td><td>${item.quantity}</td><td>${item.revenue.toLocaleString()} ریال</td></tr>`)
+      .join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="fa">
+      <head>
+        <meta charset="UTF-8">
+        <title>خلاصه فروش روزانه</title>
+        <style>
+          body { font-family: Arial, sans-serif; direction: rtl; margin: 1rem; }
+          h1 { text-align: center; color: #333; }
+          table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+          th { background-color: #f0f0f0; padding: 0.5rem; border: 1px solid #ddd; text-align: right; }
+          td { padding: 0.5rem; border: 1px solid #ddd; }
+          .summary { font-size: 1.2rem; font-weight: bold; margin-top: 1rem; }
+        </style>
+      </head>
+      <body>
+        <h1>خلاصه فروش روزانه</h1>
+        <p style="text-align: center;">تاریخ: ${toJalaliDateString(dailySummary.date.toISOString())}</p>
+
+        <div class="summary">
+          <p>تعداد فروش: ${dailySummary.totalTransactions}</p>
+          <p>تعداد بازگشت وجه: ${dailySummary.totalRefunds}</p>
+          <p>درآمد کل: ${dailySummary.totalRevenue.toLocaleString()} ریال</p>
+          <p>بازگشت وجه: ${dailySummary.totalRefundsAmount.toLocaleString()} ریال</p>
+          <p>درآمد خالص: ${dailySummary.netRevenue.toLocaleString()} ریال</p>
+        </div>
+
+        <h2>تقسیم بر اساس روش پرداخت</h2>
+        <table>
+          <thead>
+            <tr><th>روش پرداخت</th><th>مبلغ</th></tr>
+          </thead>
+          <tbody>
+            ${paymentRows}
+          </tbody>
+        </table>
+
+        <h2>پرفروش‌ترین کالاها</h2>
+        <table>
+          <thead>
+            <tr><th>نام کالا</th><th>تعداد</th><th>درآمد</th></tr>
+          </thead>
+          <tbody>
+            ${topItemsRows}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.print();
+  }, [dailySummary, addToast]);
+
   // Register page actions with Navbar
   useEffect(() => {
     const actions = (
       <>
+        <Button key="daily-summary" variant="primary" size="sm" onClick={() => setShowDailySummary(true)} fullWidth>
+          خلاصه روزانه
+        </Button>
+        <Button key="receipt-template" variant="ghost" size="sm" onClick={() => {
+          const newHeader = prompt('سربرگ رسید (خالی بگذارید برای حذف):', receiptTemplate.header || '');
+          if (newHeader !== null) {
+            const newFooter = prompt('پانویس رسید (خالی بگذارید برای حذف):', receiptTemplate.footer || '');
+            if (newFooter !== null) {
+              setReceiptTemplate({
+                header: newHeader || undefined,
+                footer: newFooter || undefined,
+                showLogo: receiptTemplate.showLogo,
+              });
+              addToast('قالب رسید به‌روزرسانی شد', 'success');
+            }
+          }
+        }} fullWidth>
+          تنظیمات رسید
+        </Button>
         <Button key="export-csv" variant="ghost" size="sm" onClick={handleExportTransactionsCsv} fullWidth>
           صادر CSV
         </Button>
@@ -574,6 +860,28 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       <Header title="فروش و سفارش (POS)" hideMenu={true} />
 
       <main className="p-4 sm:p-6 md:p-8 max-w-[1800px] mx-auto">
+        {/* Low Stock Alerts */}
+        {lowStockItems.length > 0 && (
+          <Card className="mb-4 border-warning/50 bg-warning/10 animate-fade-in">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-bold text-warning flex items-center gap-2">
+                <span>⚠️</span>
+                <span>هشدار موجودی کم</span>
+              </h3>
+              <span className="text-xs text-secondary">{lowStockItems.length} مورد</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+              {lowStockItems.map((item, idx) => (
+                <div key={idx} className="p-2 bg-background rounded border border-warning/30 text-xs">
+                  <p className="font-semibold text-primary truncate">{item.name}</p>
+                  <p className="text-secondary">{item.unit}</p>
+                  <p className="text-danger font-bold">موجودی: {item.currentStock}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
         {/* CATEGORIES BAR - Top of screen for quick access */}
         <div className="mb-4 flex flex-wrap gap-2 items-center animate-fade-in">
           <input
@@ -598,7 +906,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
             ))}
             <input
               placeholder="دسته جدید..."
-              className="px-3 py-2 bg-surface border border-border rounded-lg text-sm"
+              className="px-3 py-2 bg-surface border border-border rounded-lg text-sm max-w-[150px]"
               id="new-pos-category"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -969,7 +1277,12 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
           {/* RIGHT: CART & PAYMENT (1 column) */}
           <div className="lg:col-span-1 space-y-4 sticky top-4 h-fit">
             <Card title={`سبد خرید (${cartArray.length})`} className="bg-accent/5 animate-fade-in">
-              <div className="space-y-2 max-h-[400px] overflow-y-auto border-b border-border pb-3">
+              <div className="space-y-2 max-h-[400px] overflow-y-auto border-b border-border pb-3 scrollbar-thin scrollbar-thumb-accent/20 scrollbar-track-transparent">
+                {cartArray.length > 5 && (
+                  <div className="sticky top-0 bg-accent/10 text-xs text-secondary text-center py-1 mb-2 rounded">
+                    {cartArray.length} مورد در سبد - برای دیدن همه موارد اسکرول کنید
+                  </div>
+                )}
                 {cartArray.length === 0 ? (
                   <p className="text-center text-secondary py-8">سبد خرید خالی است</p>
                 ) : (
@@ -1044,10 +1357,22 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                     <input
                       type="number"
                       placeholder="0"
+                      min="0"
+                      max={cartTotal}
                       value={discountAmount || ''}
-                      onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value) || 0;
+                        const clampedValue = Math.max(0, Math.min(value, cartTotal));
+                        setDiscountAmount(clampedValue);
+                        if (value > cartTotal) {
+                          addToast(`تخفیف نمی‌تواند بیشتر از ${cartTotal.toLocaleString()} ریال باشد`, 'info');
+                        }
+                      }}
                       className="w-full px-2 py-1.5 bg-surface border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                     />
+                    {discountAmount > cartTotal && (
+                      <p className="text-xs text-danger mt-1">تخفیف نمی‌تواند بیشتر از جمع کل باشد</p>
+                    )}
                   </div>
                   <div className="flex justify-between items-center text-xl font-bold bg-accent/10 p-3 rounded-lg">
                     <span>نهایی:</span>
@@ -1059,37 +1384,187 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
 
             {/* PAYMENT */}
             {cartArray.length > 0 && (
-              <Card title="پرداخت" className="animate-fade-in">
+              <Card title={refundMode ? "بازگشت وجه" : "پرداخت"} className={`animate-fade-in ${refundMode ? 'border-danger/50 bg-danger/5' : ''}`}>
                 <div className="space-y-3">
-                  <div>
-                    <label className="text-sm font-medium text-primary block mb-2">روش پرداخت</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer].map(method => (
-                        <button
-                          key={method}
-                          onClick={() => setPaymentMethod(method)}
-                          className={`px-3 py-3 text-sm font-medium rounded-lg border-2 transition-colors ${
-                            paymentMethod === method
-                              ? 'bg-accent text-accent-text border-accent'
-                              : 'bg-surface text-primary border-border hover:bg-border'
-                          }`}
-                        >
-                          {method}
-                        </button>
-                      ))}
+                  {/* Refund Mode Toggle */}
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-primary">نوع تراکنش</label>
+                    <button
+                      onClick={() => {
+                        setRefundMode(!refundMode);
+                        if (!refundMode) {
+                          setCart(new Map());
+                          setDiscountAmount(0);
+                          setSelectedTransactionForRefund(null);
+                        }
+                      }}
+                      className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                        refundMode
+                          ? 'bg-danger text-white'
+                          : 'bg-surface border border-border text-primary hover:bg-border'
+                      }`}
+                    >
+                      {refundMode ? 'بازگشت وجه' : 'فروش عادی'}
+                    </button>
+                  </div>
+
+                  {/* Select Original Transaction for Refund */}
+                  {refundMode && (
+                    <div>
+                      <label className="text-sm font-medium text-primary block mb-2">فاکتور اصلی</label>
+                      <select
+                        value={selectedTransactionForRefund?.id || ''}
+                        onChange={(e) => {
+                          const trans = store.sellTransactions.find((t: SellTransaction) => t.id === e.target.value);
+                          setSelectedTransactionForRefund(trans || null);
+                          if (trans) {
+                            // Pre-fill cart with items from original transaction (as negative)
+                            const refundCart = new Map();
+                            trans.items.forEach((item, idx) => {
+                              refundCart.set(`refund-${item.id}-${idx}`, {
+                                posItemId: item.posItemId,
+                                name: item.name,
+                                quantity: item.quantity,
+                                unitPrice: item.unitPrice,
+                                customizations: item.customizationChoices || {},
+                              });
+                            });
+                            setCart(refundCart);
+                            setDiscountAmount(trans.discountAmount || 0);
+                            setPaymentMethod(trans.paymentMethod);
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                      >
+                        <option value="">انتخاب فاکتور...</option>
+                        {store.sellTransactions
+                          .filter((t: SellTransaction) => !t.isRefund)
+                          .sort((a: SellTransaction, b: SellTransaction) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                          .slice(0, 50)
+                          .map((trans: SellTransaction) => (
+                            <option key={trans.id} value={trans.id}>
+                              #{trans.receiptNumber || trans.id.slice(-8)} - {toJalaliDateString(trans.date)} - {trans.totalAmount.toLocaleString()} ریال
+                            </option>
+                          ))}
+                      </select>
                     </div>
+                  )}
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-primary">روش پرداخت</label>
+                      <label className="flex items-center gap-2 text-xs text-secondary cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={useSplitPayment}
+                          onChange={(e) => {
+                            setUseSplitPayment(e.target.checked);
+                            if (e.target.checked) {
+                              // Initialize with current payment method
+                              setSplitPayments([{ method: paymentMethod, amount: finalTotal }]);
+                            } else {
+                              setSplitPayments([]);
+                            }
+                          }}
+                          className="rounded"
+                        />
+                        پرداخت تقسیمی
+                      </label>
+                    </div>
+
+                    {!useSplitPayment ? (
+                      <div className="grid grid-cols-3 gap-2">
+                        {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer].map(method => (
+                          <button
+                            key={method}
+                            onClick={() => setPaymentMethod(method)}
+                            className={`px-3 py-3 text-sm font-medium rounded-lg border-2 transition-colors ${
+                              paymentMethod === method
+                                ? 'bg-accent text-accent-text border-accent'
+                                : 'bg-surface text-primary border-border hover:bg-border'
+                            }`}
+                          >
+                            {method}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {splitPayments.map((split: { method: PaymentMethod; amount: number }, idx: number) => (
+                          <div key={idx} className="flex gap-2 items-center">
+                            <select
+                              value={split.method}
+                              onChange={(e) => {
+                                const newSplits = [...splitPayments];
+                                newSplits[idx].method = e.target.value as PaymentMethod;
+                                setSplitPayments(newSplits);
+                              }}
+                              className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg text-sm"
+                            >
+                              {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer].map(method => (
+                                <option key={method} value={method}>{method}</option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              value={split.amount || ''}
+                              onChange={(e) => {
+                                const newSplits = [...splitPayments];
+                                newSplits[idx].amount = parseFloat(e.target.value) || 0;
+                                setSplitPayments(newSplits);
+                              }}
+                              className="w-32 px-3 py-2 bg-surface border border-border rounded-lg text-sm"
+                              placeholder="مبلغ"
+                              min="0"
+                            />
+                            <button
+                              onClick={() => {
+                                setSplitPayments(splitPayments.filter((_, i) => i !== idx));
+                              }}
+                              className="px-2 py-2 text-danger hover:bg-danger/10 rounded"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => {
+                            setSplitPayments([...splitPayments, { method: PaymentMethod.Cash, amount: 0 }]);
+                          }}
+                          className="w-full px-3 py-2 text-sm bg-surface border border-border rounded-lg hover:bg-border transition-colors"
+                        >
+                          + افزودن روش پرداخت
+                        </button>
+                        {splitPayments.length > 0 && (
+                          <div className="flex justify-between items-center pt-2 border-t border-border">
+                            <span className="text-sm text-secondary">مجموع:</span>
+                            <CurrencyDisplay
+                              value={splitPayments.reduce((sum: number, s: { method: PaymentMethod; amount: number }) => sum + s.amount, 0)}
+                              className={`text-sm font-semibold ${
+                                Math.abs(splitPayments.reduce((sum: number, s: { method: PaymentMethod; amount: number }) => sum + s.amount, 0) - finalTotal) < 0.01
+                                  ? 'text-success'
+                                  : 'text-danger'
+                              }`}
+                            />
+                            <span className="text-xs text-secondary">
+                              / {finalTotal.toLocaleString()} ریال
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <Button
-                    variant="success"
+                    variant={refundMode ? "danger" : "success"}
                     size="lg"
                     onClick={handleCompleteSale}
-                    disabled={cartArray.length === 0}
+                    disabled={cartArray.length === 0 || (refundMode && !selectedTransactionForRefund)}
                     fullWidth
                     icon={<CheckIcon />}
                     className="animate-fade-in"
                   >
-                    تایید و ثبت فروش
+                    {refundMode ? 'تایید و ثبت بازگشت وجه' : 'تایید و ثبت فروش'}
                   </Button>
                   <p className="text-xs text-secondary text-center">Enter برای ثبت سریع</p>
                 </div>
@@ -1107,7 +1582,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
         </div>
       </main>
       {/* Customization Modal */}
-      {modalItem && (
+      {modalItem && !cancelModalConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="w-full max-w-md bg-background rounded-lg p-6 border border-border shadow-xl animate-fade-in-down">
             <div className="flex justify-between items-center mb-4">
@@ -1275,88 +1750,289 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
         </div>
       )}
 
-      {/* Delete Item Confirmation Modal */}
-      {deleteItemConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      {/* Cancel Customization Modal Confirmation */}
+      {cancelModalConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <Card className="w-full max-w-md animate-fade-in-down">
-            <h3 className="text-lg font-bold text-primary mb-4">تایید حذف</h3>
-            <p className="text-secondary mb-4">آیا مطمئن هستید که می‌خواهید این کالا را حذف کنید؟</p>
+            <h3 className="text-lg font-bold text-primary mb-4">تایید انصراف</h3>
+            <p className="text-secondary mb-4">آیا مطمئن هستید که می‌خواهید انصراف دهید؟ تغییرات اعمال شده از دست خواهد رفت.</p>
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => setDeleteItemConfirm(null)} fullWidth>
-                انصراف
+              <Button variant="secondary" onClick={() => setCancelModalConfirm(false)} fullWidth>
+                ادامه ویرایش
               </Button>
-              <Button variant="danger" onClick={() => handleDeletePOSItem(deleteItemConfirm)} fullWidth>
-                حذف
+              <Button variant="danger" onClick={confirmCloseModal} fullWidth>
+                انصراف و بستن
               </Button>
             </div>
           </Card>
         </div>
       )}
 
+      {/* Delete Item Confirmation Modal */}
+      {deleteItemConfirm && (() => {
+        const itemToDelete = posItems.find(item => item.id === deleteItemConfirm);
+        const recentSales = itemToDelete ? store.sellTransactions.filter(trans => {
+          const sevenDaysAgo = new Date();
+          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+          return new Date(trans.date) >= sevenDaysAgo &&
+                 trans.items.some(item => item.posItemId === itemToDelete.id);
+        }).length : 0;
+        const hasRecentSales = recentSales > 0;
+
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <Card className="w-full max-w-md animate-fade-in-down">
+              <h3 className="text-lg font-bold text-primary mb-4">تایید حذف</h3>
+              <p className="text-secondary mb-4">آیا مطمئن هستید که می‌خواهید این کالا را حذف کنید؟</p>
+              {hasRecentSales && (
+                <div className="mb-4 p-3 bg-warning/10 border border-warning/30 rounded-lg">
+                  <p className="text-sm text-warning font-semibold mb-1">⚠️ هشدار</p>
+                  <p className="text-xs text-secondary">
+                    این کالا در {recentSales} فروش در ۷ روز گذشته استفاده شده است.
+                    حذف آن ممکن است بر گزارش‌های فروش تأثیر بگذارد.
+                  </p>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => setDeleteItemConfirm(null)} fullWidth>
+                  انصراف
+                </Button>
+                <Button variant="danger" onClick={() => handleDeletePOSItem(deleteItemConfirm)} fullWidth>
+                  حذف
+                </Button>
+              </div>
+            </Card>
+          </div>
+        );
+      })()}
+
       {/* Edit Transaction Modal */}
-      {editingTransaction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fade-in-down">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-primary">ویرایش فروش</h3>
-              <button onClick={() => setEditingTransaction(null)} className="text-secondary hover:text-primary text-2xl">×</button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-primary block mb-2">روش پرداخت</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer].map(method => (
-                    <button
-                      key={method}
-                      onClick={() => updateSellTransaction(editingTransaction.id, { paymentMethod: method })}
-                      className={`px-3 py-2 text-sm font-medium rounded-lg border-2 transition-colors ${
-                        editingTransaction.paymentMethod === method
-                          ? 'bg-accent text-accent-text border-accent'
-                          : 'bg-surface text-primary border-border hover:bg-border'
-                      }`}
-                    >
-                      {method}
-                    </button>
-                  ))}
+      {editingTransaction && (() => {
+        // Initialize editing state when transaction changes
+        useEffect(() => {
+          if (editingTransaction) {
+            setEditingItems([...editingTransaction.items]);
+            setEditingPaymentMethod(editingTransaction.paymentMethod);
+            setEditingDiscount(editingTransaction.discountAmount || 0);
+          }
+        }, [editingTransaction?.id]);
+
+        const itemsTotal = editingItems.reduce((sum, item) => sum + item.totalPrice, 0);
+        const newTotal = Math.max(0, itemsTotal - editingDiscount);
+
+        const handleUpdateItemQuantity = (itemId: string, newQuantity: number) => {
+          if (newQuantity <= 0) {
+            setEditingItems(prev => prev.filter(item => item.id !== itemId));
+          } else {
+            setEditingItems(prev => prev.map(item => {
+              if (item.id === itemId) {
+                const newTotalPrice = item.unitPrice * newQuantity;
+                return { ...item, quantity: newQuantity, totalPrice: newTotalPrice };
+              }
+              return item;
+            }));
+          }
+        };
+
+        const handleRemoveItem = (itemId: string) => {
+          setEditingItems(prev => prev.filter(item => item.id !== itemId));
+        };
+
+        const handleSaveChanges = () => {
+          if (editingItems.length === 0) {
+            addToast('فروش باید حداقل یک کالا داشته باشد', 'error');
+            return;
+          }
+          updateSellTransaction(editingTransaction.id, {
+            items: editingItems,
+            paymentMethod: editingPaymentMethod,
+            discountAmount: editingDiscount > 0 ? editingDiscount : undefined,
+            totalAmount: newTotal,
+          });
+          setEditingTransaction(null);
+          addToast('فروش به‌روزرسانی شد', 'success');
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+            <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto animate-fade-in-down">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-primary">ویرایش فروش #{editingTransaction.receiptNumber || editingTransaction.id.slice(-8)}</h3>
+                <button onClick={() => setEditingTransaction(null)} className="text-secondary hover:text-primary text-2xl">×</button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-primary block mb-2">روش پرداخت</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer].map(method => (
+                      <button
+                        key={method}
+                        onClick={() => setEditingPaymentMethod(method)}
+                        className={`px-3 py-2 text-sm font-medium rounded-lg border-2 transition-colors ${
+                          editingPaymentMethod === method
+                            ? 'bg-accent text-accent-text border-accent'
+                            : 'bg-surface text-primary border-border hover:bg-border'
+                        }`}
+                      >
+                        {method}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-primary block mb-2">تخفیف (ریال)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max={itemsTotal}
+                    value={editingDiscount || ''}
+                    onChange={(e) => setEditingDiscount(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 bg-surface border border-border rounded-lg"
+                  />
+                </div>
+                <div className="border-t border-border pt-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <p className="text-sm font-medium text-primary">اقلام ({editingItems.length})</p>
+                  </div>
+                  <div className="space-y-2">
+                    {editingItems.length === 0 ? (
+                      <p className="text-center text-secondary py-4">هیچ کالایی وجود ندارد</p>
+                    ) : (
+                      editingItems.map(item => (
+                        <div key={item.id} className="flex justify-between items-center p-3 bg-background rounded-lg border border-border">
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold text-primary">{item.name}</p>
+                            <p className="text-xs text-secondary">قیمت واحد: <CurrencyDisplay value={item.unitPrice} /></p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 bg-surface rounded-lg p-1">
+                              <button
+                                onClick={() => handleUpdateItemQuantity(item.id, item.quantity - 1)}
+                                className="p-1 hover:bg-border rounded transition-colors"
+                              >
+                                −
+                              </button>
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => handleUpdateItemQuantity(item.id, parseInt(e.target.value, 10) || 1)}
+                                className="w-12 text-center bg-transparent border-none focus:outline-none"
+                              />
+                              <button
+                                onClick={() => handleUpdateItemQuantity(item.id, item.quantity + 1)}
+                                className="p-1 hover:bg-border rounded transition-colors"
+                              >
+                                +
+                              </button>
+                            </div>
+                            <CurrencyDisplay value={item.totalPrice} className="text-sm font-semibold w-24 text-right" />
+                            <button
+                              onClick={() => handleRemoveItem(item.id)}
+                              className="p-2 text-danger hover:bg-danger/10 rounded transition-colors"
+                              title="حذف"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="mt-4 flex justify-between items-center pt-4 border-t border-border">
+                    <span className="font-bold text-lg">جمع کل:</span>
+                    <CurrencyDisplay value={newTotal} className="font-bold text-lg text-accent" />
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button variant="secondary" onClick={() => setEditingTransaction(null)} fullWidth>
+                    انصراف
+                  </Button>
+                  <Button variant="primary" onClick={handleSaveChanges} fullWidth>
+                    ذخیره تغییرات
+                  </Button>
+                  <Button variant="ghost" onClick={() => printReceipt(editingTransaction)} fullWidth>
+                    چاپ رسید
+                  </Button>
                 </div>
               </div>
-              <div>
-                <label className="text-sm font-medium text-primary block mb-2">تخفیف (ریال)</label>
-                <input
-                  type="number"
-                  value={editingTransaction.discountAmount || 0}
-                  onChange={(e) => {
-                    const discount = parseFloat(e.target.value) || 0;
-                    const newTotal = editingTransaction.items.reduce((sum, item) => sum + item.totalPrice, 0) - discount;
-                    updateSellTransaction(editingTransaction.id, {
-                      discountAmount: discount > 0 ? discount : undefined,
-                      totalAmount: Math.max(0, newTotal)
-                    });
-                  }}
-                  className="w-full px-3 py-2 bg-surface border border-border rounded-lg"
-                />
+            </Card>
+          </div>
+        );
+      })()}
+
+      {/* Daily Sales Summary Modal */}
+      {showDailySummary && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto animate-fade-in-down">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-primary">خلاصه فروش روزانه</h3>
+              <button onClick={() => setShowDailySummary(false)} className="text-secondary hover:text-primary text-2xl">×</button>
+            </div>
+
+            <div className="space-y-6">
+              <div className="text-center">
+                <p className="text-secondary mb-2">تاریخ: {toJalaliDateString(dailySummary.date.toISOString())}</p>
               </div>
-              <div className="border-t border-border pt-4">
-                <p className="text-sm text-secondary mb-2">اقلام:</p>
+
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-accent/10 p-4 rounded-lg text-center">
+                  <p className="text-xs text-secondary mb-1">فروش‌ها</p>
+                  <p className="text-2xl font-bold text-primary">{dailySummary.totalTransactions}</p>
+                </div>
+                <div className="bg-danger/10 p-4 rounded-lg text-center">
+                  <p className="text-xs text-secondary mb-1">بازگشت وجه</p>
+                  <p className="text-2xl font-bold text-danger">{dailySummary.totalRefunds}</p>
+                </div>
+                <div className="bg-success/10 p-4 rounded-lg text-center">
+                  <p className="text-xs text-secondary mb-1">درآمد کل</p>
+                  <CurrencyDisplay value={dailySummary.totalRevenue} className="text-2xl font-bold text-success" />
+                </div>
+                <div className="bg-warning/10 p-4 rounded-lg text-center">
+                  <p className="text-xs text-secondary mb-1">درآمد خالص</p>
+                  <CurrencyDisplay value={dailySummary.netRevenue} className="text-2xl font-bold text-warning" />
+                </div>
+              </div>
+
+              {/* Payment Breakdown */}
+              <div>
+                <h4 className="font-bold text-primary mb-3">تقسیم بر اساس روش پرداخت</h4>
                 <div className="space-y-2">
-                  {editingTransaction.items.map(item => (
-                    <div key={item.id} className="flex justify-between items-center p-2 bg-background rounded">
-                      <span className="text-sm">{item.name} × {item.quantity}</span>
-                      <CurrencyDisplay value={item.totalPrice} className="text-sm font-semibold" />
+                  {Object.entries(dailySummary.paymentBreakdown).map(([method, amount]) => (
+                    <div key={method} className="flex justify-between items-center p-3 bg-background rounded-lg">
+                      <span className="text-primary">{method}</span>
+                      <CurrencyDisplay value={amount} className="font-semibold text-primary" />
                     </div>
                   ))}
                 </div>
-                <div className="mt-4 flex justify-between items-center pt-4 border-t border-border">
-                  <span className="font-bold text-lg">جمع کل:</span>
-                  <CurrencyDisplay value={editingTransaction.totalAmount} className="font-bold text-lg text-accent" />
-                </div>
               </div>
-              <div className="flex gap-2 pt-2">
-                <Button variant="secondary" onClick={() => setEditingTransaction(null)} fullWidth>
+
+              {/* Top Items */}
+              {dailySummary.topItems.length > 0 && (
+                <div>
+                  <h4 className="font-bold text-primary mb-3">پرفروش‌ترین کالاها</h4>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {dailySummary.topItems.map((item, idx) => (
+                      <div key={idx} className="flex justify-between items-center p-3 bg-background rounded-lg">
+                        <div>
+                          <p className="font-semibold text-primary">{item.name}</p>
+                          <p className="text-xs text-secondary">{item.quantity} عدد</p>
+                        </div>
+                        <CurrencyDisplay value={item.revenue} className="font-semibold text-accent" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-2 pt-4 border-t border-border">
+                <Button variant="secondary" onClick={() => setShowDailySummary(false)} fullWidth>
                   بستن
                 </Button>
-                <Button variant="primary" onClick={() => printReceipt(editingTransaction)} fullWidth>
-                  چاپ رسید
+                <Button variant="primary" onClick={handlePrintDailySummary} fullWidth>
+                  چاپ خلاصه
                 </Button>
               </div>
             </div>
@@ -1364,9 +2040,162 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
         </div>
       )}
 
+      {/* Shift Management Modal */}
+      {showShiftModal && (() => {
+        const activeShift = getActiveShift();
+        const shiftTransactions = activeShift ? getShiftTransactions(activeShift.id) : [];
+        const cashTransactions = shiftTransactions.filter((t: SellTransaction) => t.paymentMethod === PaymentMethod.Cash && !t.isRefund);
+        const cashRefunds = shiftTransactions.filter((t: SellTransaction) => t.isRefund && t.paymentMethod === PaymentMethod.Cash);
+        const expectedCash = activeShift
+          ? activeShift.startingCash +
+            cashTransactions.reduce((sum: number, t: SellTransaction) => sum + t.totalAmount, 0) -
+            cashRefunds.reduce((sum: number, t: SellTransaction) => sum + Math.abs(t.totalAmount), 0)
+          : 0;
+        const [endingCash, setEndingCash] = useState<number>(expectedCash);
+        const [shiftNotes, setShiftNotes] = useState<string>('');
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+            <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fade-in-down">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-primary">
+                  {activeShift ? 'مدیریت شیفت' : 'شروع شیفت جدید'}
+                </h3>
+                <button onClick={() => setShowShiftModal(false)} className="text-secondary hover:text-primary text-2xl">×</button>
+              </div>
+
+              {activeShift ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-accent/10 p-4 rounded-lg">
+                      <p className="text-xs text-secondary mb-1">شروع شیفت</p>
+                      <p className="font-semibold text-primary">{toJalaliDateString(activeShift.startTime)}</p>
+                    </div>
+                    <div className="bg-accent/10 p-4 rounded-lg">
+                      <p className="text-xs text-secondary mb-1">نقد اولیه</p>
+                      <CurrencyDisplay value={activeShift.startingCash} className="font-semibold text-primary" />
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border pt-4">
+                    <h4 className="font-bold text-primary mb-3">خلاصه تراکنش‌ها</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs text-secondary mb-1">تعداد فروش</p>
+                        <p className="text-lg font-semibold text-primary">{shiftTransactions.filter((t: SellTransaction) => !t.isRefund).length}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-secondary mb-1">فروش نقدی</p>
+                        <CurrencyDisplay value={cashTransactions.reduce((sum: number, t: SellTransaction) => sum + t.totalAmount, 0)} className="text-lg font-semibold text-success" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-secondary mb-1">بازگشت وجه</p>
+                        <CurrencyDisplay value={cashRefunds.reduce((sum: number, t: SellTransaction) => sum + Math.abs(t.totalAmount), 0)} className="text-lg font-semibold text-danger" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-secondary mb-1">نقدی مورد انتظار</p>
+                        <CurrencyDisplay value={expectedCash} className="text-lg font-semibold text-accent" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border pt-4">
+                    <label className="text-sm font-medium text-primary block mb-2">نقدی واقعی در صندوق</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={endingCash || ''}
+                      onChange={(e) => setEndingCash(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 bg-surface border border-border rounded-lg"
+                      placeholder="مقدار نقدی موجود"
+                    />
+                    {endingCash !== expectedCash && (
+                      <p className={`text-sm mt-2 font-semibold ${
+                        endingCash > expectedCash ? 'text-success' : 'text-danger'
+                      }`}>
+                        تفاوت: {(endingCash - expectedCash).toLocaleString()} ریال
+                        {endingCash > expectedCash ? ' (زیاد)' : ' (کم)'}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-primary block mb-2">یادداشت (اختیاری)</label>
+                    <textarea
+                      value={shiftNotes}
+                      onChange={(e) => setShiftNotes(e.target.value)}
+                      className="w-full px-3 py-2 bg-surface border border-border rounded-lg"
+                      rows={3}
+                      placeholder="یادداشت‌های شیفت..."
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <Button variant="secondary" onClick={() => setShowShiftModal(false)} fullWidth>
+                      انصراف
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        try {
+                          endShift(endingCash, shiftNotes || undefined);
+                          setShowShiftModal(false);
+                          addToast('شیفت با موفقیت بسته شد', 'success');
+                        } catch (error) {
+                          addToast('خطا در بستن شیفت', 'error');
+                        }
+                      }}
+                      fullWidth
+                    >
+                      بستن شیفت
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-primary block mb-2">نقدی اولیه در صندوق</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={shiftStartingCash || ''}
+                      onChange={(e) => setShiftStartingCash(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 bg-surface border border-border rounded-lg"
+                      placeholder="مقدار نقدی موجود در صندوق"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <Button variant="secondary" onClick={() => setShowShiftModal(false)} fullWidth>
+                      انصراف
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        if (shiftStartingCash < 0) {
+                          addToast('نقدی اولیه نمی‌تواند منفی باشد', 'error');
+                          return;
+                        }
+                        startShift(shiftStartingCash);
+                        setShowShiftModal(false);
+                        setShiftStartingCash(0);
+                        addToast('شیفت جدید شروع شد', 'success');
+                      }}
+                      fullWidth
+                    >
+                      شروع شیفت
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </Card>
+          </div>
+        );
+      })()}
+
       {/* Delete Transaction Confirmation Modal */}
       {deleteTransactionConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <Card className="w-full max-w-md animate-fade-in-down">
             <h3 className="text-lg font-bold text-primary mb-4">تایید حذف</h3>
             <p className="text-secondary mb-4">آیا مطمئن هستید که می‌خواهید این فروش را حذف کنید؟</p>
@@ -1377,9 +2206,14 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
               <Button
                 variant="danger"
                 onClick={() => {
+                  const transaction = store.sellTransactions.find(t => t.id === deleteTransactionConfirm);
+                  if (transaction) {
+                    // Add to undo stack before deleting
+                    setUndoStack(prev => [...prev, { action: 'delete', transaction }]);
+                  }
                   deleteSellTransaction(deleteTransactionConfirm);
                   setDeleteTransactionConfirm(null);
-                  addToast('فروش حذف شد', 'success');
+                  addToast('فروش حذف شد. می‌توانید با Ctrl+Z برگردانید', 'success');
                 }}
                 fullWidth
               >
@@ -1400,18 +2234,86 @@ const RecentTransactionsCard: React.FC<{
   onPrint?: (trans: SellTransaction) => void;
 }> = ({ store, onEdit, onDelete, onPrint }) => {
   const { sellTransactions } = store as { sellTransactions: SellTransaction[] };
-  const recentTransactions = sellTransactions.slice(-10).reverse();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [paymentFilter, setPaymentFilter] = useState<PaymentMethod | 'all'>('all');
+
+  const filteredTransactions = useMemo(() => {
+    let filtered = [...sellTransactions];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(trans => {
+        const receiptMatch = trans.receiptNumber?.toString().includes(query);
+        const itemMatch = trans.items.some(item => item.name.toLowerCase().includes(query));
+        const dateMatch = toJalaliDateString(trans.date).includes(query);
+        return receiptMatch || itemMatch || dateMatch;
+      });
+    }
+
+    // Payment method filter
+    if (paymentFilter !== 'all') {
+      filtered = filtered.filter(trans => trans.paymentMethod === paymentFilter);
+    }
+
+    return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [sellTransactions, searchQuery, paymentFilter]);
+
+  const recentTransactions = filteredTransactions.slice(0, 20); // Show up to 20 filtered results
 
   return (
-    <Card title={`آخرین فروش‌ها (${sellTransactions.length})`}>
+    <Card title={`آخرین فروش‌ها (${filteredTransactions.length}/${sellTransactions.length})`}>
+      {/* Search and Filter */}
+      <div className="mb-3 space-y-2">
+        <input
+          type="text"
+          placeholder="جستجو بر اساس شماره فاکتور، کالا یا تاریخ..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+        />
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setPaymentFilter('all')}
+            className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+              paymentFilter === 'all'
+                ? 'bg-accent text-accent-text'
+                : 'bg-surface border border-border text-primary hover:bg-border'
+            }`}
+          >
+            همه
+          </button>
+          {[PaymentMethod.Cash, PaymentMethod.Card, PaymentMethod.Transfer].map(method => (
+            <button
+              key={method}
+              onClick={() => setPaymentFilter(method)}
+              className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                paymentFilter === method
+                  ? 'bg-accent text-accent-text'
+                  : 'bg-surface border border-border text-primary hover:bg-border'
+              }`}
+            >
+              {method}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {recentTransactions.length === 0 ? (
-        <p className="text-center text-secondary py-4">هیچ فروشی ثبت نشده است</p>
+        <p className="text-center text-secondary py-4">
+          {sellTransactions.length === 0 ? 'هیچ فروشی ثبت نشده است' : 'نتیجه‌ای یافت نشد'}
+        </p>
       ) : (
         <div className="space-y-2 max-h-96 overflow-y-auto">
           {recentTransactions.map((trans: SellTransaction) => (
             <div key={trans.id} className="p-2 bg-background rounded border border-border text-xs hover-lift transition-all animate-fade-in group">
               <div className="flex justify-between items-start mb-1">
-                <span className="text-secondary">{toJalaliDateString(trans.date)}</span>
+                <div>
+                  <span className="text-secondary">{toJalaliDateString(trans.date)}</span>
+                  {trans.receiptNumber && (
+                    <span className="text-xs text-accent mr-2">#{trans.receiptNumber}</span>
+                  )}
+                </div>
                 <CurrencyDisplay value={trans.totalAmount} className="font-semibold text-primary" />
               </div>
               <div className="mb-2 space-y-1">

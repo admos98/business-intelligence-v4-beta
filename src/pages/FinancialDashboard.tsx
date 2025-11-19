@@ -91,7 +91,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
 
       <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-8">
         {/* PERIOD SELECTOR */}
-        <div className="flex flex-wrap gap-2 justify-center">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 justify-center max-w-2xl mx-auto">
           {['7d', '30d', 'mtd', 'ytd', 'all'].map((p) => (
             <button
               key={p}

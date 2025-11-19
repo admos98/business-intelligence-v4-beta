@@ -76,11 +76,46 @@ const BuyItemModal: React.FC<BuyItemModalProps> = ({ item, onClose, onConfirm })
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-secondary mb-1">{t.quantityPurchased} ({item.unit})</label>
-                <input type="number" value={purchasedAmount} onChange={(e) => setPurchasedAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent" autoFocus required />
+                <input
+                  type="number"
+                  value={purchasedAmount}
+                  onChange={(e) => {
+                    const value = e.target.value === '' ? '' : parseFloat(e.target.value);
+                    if (value === '' || (typeof value === 'number' && value > 0 && value <= 10000)) {
+                      setPurchasedAmount(value);
+                    }
+                  }}
+                  min="0.01"
+                  max="10000"
+                  step="0.01"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                  autoFocus
+                  required
+                />
+                {typeof purchasedAmount === 'number' && purchasedAmount > 10000 && (
+                  <p className="text-xs text-danger mt-1">مقدار نمی‌تواند بیشتر از ۱۰۰۰۰ باشد</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-secondary mb-1">{t.pricePerUnitLabel}</label>
-                <input type="number" value={pricePerUnit} onChange={(e) => setPricePerUnit(e.target.value === '' ? '' : parseFloat(e.target.value))} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent" required />
+                <input
+                  type="number"
+                  value={pricePerUnit}
+                  onChange={(e) => {
+                    const value = e.target.value === '' ? '' : parseFloat(e.target.value);
+                    if (value === '' || (typeof value === 'number' && value >= 0 && value <= 10000000)) {
+                      setPricePerUnit(value);
+                    }
+                  }}
+                  min="0"
+                  max="10000000"
+                  step="1"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                  required
+                />
+                {typeof pricePerUnit === 'number' && pricePerUnit > 10000000 && (
+                  <p className="text-xs text-danger mt-1">قیمت نمی‌تواند بیشتر از ۱۰ میلیون ریال باشد</p>
+                )}
               </div>
             </div>
              <div>

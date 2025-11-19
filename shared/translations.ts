@@ -39,6 +39,7 @@ export const t = {
   openMenu: "باز کردن منو",
   logout: "خروج",
   pastMonthHeader: (monthName: string, year: number) => `لیست‌های ${monthName} ${year.toLocaleString('fa-IR')}`,
+  processing: "در حال پردازش...",
 
 
   // Login Page

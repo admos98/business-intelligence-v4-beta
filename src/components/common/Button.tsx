@@ -1,4 +1,5 @@
 import React, { ReactNode } from 'react';
+import { t } from '../../../shared/translations';
 
 interface ButtonProps {
   children: ReactNode;
@@ -53,7 +54,7 @@ const Button: React.FC<ButtonProps> = ({
       {loading ? (
         <>
           <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-          <span>در حال پردازش...</span>
+          <span>{t.processing}</span>
         </>
       ) : (
         <>

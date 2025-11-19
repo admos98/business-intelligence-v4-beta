@@ -1,7 +1,7 @@
 // src/store/useShoppingStore.ts
 
 import { create } from 'zustand';
-import { ShoppingList, ShoppingItem, CafeCategory, Vendor, OcrResult, Unit, ItemStatus, PaymentStatus, PaymentMethod, PendingPaymentItem, SmartSuggestion, SummaryData, RecentPurchaseItem, MasterItem, AuthSlice, ShoppingState, InflationData, InflationDetail, InflationPoint, POSItem, SellTransaction, Recipe, StockEntry, SellSummaryData, FinancialOverviewData } from '../../shared/types.ts';
+import { ShoppingList, ShoppingItem, CafeCategory, Vendor, OcrResult, Unit, ItemStatus, PaymentStatus, PaymentMethod, PendingPaymentItem, SmartSuggestion, SummaryData, RecentPurchaseItem, MasterItem, AuthSlice, ShoppingState, InflationData, InflationDetail, InflationPoint, POSItem, SellTransaction, Recipe, StockEntry, SellSummaryData, FinancialOverviewData, AuditLogEntry, Shift } from '../../shared/types.ts';
 import { t } from '../../shared/translations.ts';
 import { parseJalaliDate, toJalaliDateString, gregorianToJalali } from '../../shared/jalali.ts';
 import { fetchData, saveData } from '../lib/api.ts';
@@ -23,6 +23,8 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   sellTransactions: SellTransaction[];
   recipes: Recipe[];
   stockEntries: Record<string, StockEntry>; // itemName-unit key -> StockEntry
+  auditLog: AuditLogEntry[]; // Audit trail for critical operations
+  shifts: Shift[]; // Shift management
 
   // Category actions
   addCategory: (name: string) => void;
@@ -103,6 +105,12 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   // Import/Export
   importData: (jsonData: string) => Promise<void>;
   exportData: () => string;
+
+  // SHIFT MANAGEMENT
+  startShift: (startingCash: number) => string;
+  endShift: (endingCash: number, notes?: string) => void;
+  getActiveShift: () => Shift | null;
+  getShiftTransactions: (shiftId: string) => SellTransaction[];
 }
 
 const DEFAULT_CATEGORIES: string[] = Object.values(CafeCategory);
@@ -128,6 +136,27 @@ const emptyState = {
   sellTransactions: [],
   recipes: [],
   stockEntries: {},
+  auditLog: [],
+  shifts: [],
+};
+
+// --- Helper function to add audit log entry ---
+const addAuditLogEntry = (
+  state: FullShoppingState,
+  action: AuditLogEntry['action'],
+  details: AuditLogEntry['details']
+) => {
+  const entry: AuditLogEntry = {
+    id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    timestamp: new Date().toISOString(),
+    action,
+    userId: state.currentUser?.username,
+    details,
+  };
+
+  // Keep only last 1000 entries to prevent unbounded growth
+  const newLog = [...(state.auditLog || []), entry].slice(-1000);
+  return { auditLog: newLog };
 };
 
 // --- Debounced save function ---
@@ -160,9 +189,35 @@ const debouncedSaveData = (state: FullShoppingState) => {
         };
         saveData(dataToSave).catch((err: unknown) => {
             const errorMessage = err instanceof Error ? err.message : "Auto-save failed";
-            console.error("Auto-save failed:", errorMessage);
-            // Note: In a production app, you might want to show a toast notification to the user
-            // or implement a retry mechanism here
+            const errorDetails = err instanceof Error ? {
+                message: errorMessage,
+                name: err.name,
+                stack: err.stack
+            } : { message: errorMessage };
+
+            console.error("Auto-save failed:", errorDetails);
+
+            // Retry logic for transient network errors
+            const isNetworkError = errorMessage.includes('Failed to fetch') ||
+                                 errorMessage.includes('timeout') ||
+                                 errorMessage.includes('NetworkError');
+
+            if (isNetworkError) {
+                // Retry once after 3 seconds for network errors
+                setTimeout(() => {
+                    console.log("Retrying auto-save after network error...");
+                    saveData(dataToSave).catch((retryErr: unknown) => {
+                        const retryMessage = retryErr instanceof Error ? retryErr.message : "Retry failed";
+                        console.error("Auto-save retry also failed:", retryMessage);
+                        // TODO: Consider showing a toast notification to the user here
+                        // This would require passing a callback or using a global event system
+                    });
+                }, 3000);
+            } else {
+                // For non-network errors (validation, auth, etc.), log but don't retry
+                console.error("Auto-save failed with non-retryable error:", errorMessage);
+                // TODO: Show user notification for critical errors (auth failures, etc.)
+            }
         });
     }, 1500); // Debounce for 1.5 seconds
 };
@@ -1475,9 +1530,101 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             sellTransactions: get().sellTransactions,
             recipes: get().recipes,
             stockEntries: get().stockEntries,
+            auditLog: get().auditLog,
+            shifts: get().shifts,
         };
         return JSON.stringify(data, null, 2);
       },
+
+      // ========== SHIFT MANAGEMENT ==========
+      startShift: (startingCash) => {
+        // End any active shift first
+        const activeShift = get().getActiveShift();
+        if (activeShift) {
+          // Auto-end previous shift
+          const transactions = get().getShiftTransactions(activeShift.id);
+          const cashTransactions = transactions.filter(t =>
+            t.paymentMethod === PaymentMethod.Cash && !t.isRefund
+          );
+          const refunds = transactions.filter(t => t.isRefund && t.paymentMethod === PaymentMethod.Cash);
+          const expectedCash = activeShift.startingCash +
+            cashTransactions.reduce((sum, t) => sum + t.totalAmount, 0) -
+            refunds.reduce((sum, t) => sum + Math.abs(t.totalAmount), 0);
+
+          set(state => ({
+            shifts: state.shifts.map(s =>
+              s.id === activeShift.id
+                ? { ...s, endTime: new Date().toISOString(), endingCash: expectedCash, expectedCash, difference: 0, isActive: false }
+                : s
+            )
+          }));
+        }
+
+        const newShift: Shift = {
+          id: `shift-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          startTime: new Date().toISOString(),
+          startingCash,
+          isActive: true,
+          transactions: [],
+        };
+
+        set(state => ({
+          shifts: [...state.shifts, newShift],
+          ...addAuditLogEntry(state, 'transaction_created', {
+            metadata: { action: 'shift_started', shiftId: newShift.id, startingCash },
+          }),
+        }));
+        debouncedSaveData(get());
+        return newShift.id;
+      },
+
+      endShift: (endingCash, notes) => {
+        const activeShift = get().getActiveShift();
+        if (!activeShift) {
+          throw new Error('No active shift to end');
+        }
+
+        const transactions = get().getShiftTransactions(activeShift.id);
+        const cashTransactions = transactions.filter(t =>
+          t.paymentMethod === PaymentMethod.Cash && !t.isRefund
+        );
+        const refunds = transactions.filter(t => t.isRefund && t.paymentMethod === PaymentMethod.Cash);
+        const expectedCash = activeShift.startingCash +
+          cashTransactions.reduce((sum, t) => sum + t.totalAmount, 0) -
+          refunds.reduce((sum, t) => sum + Math.abs(t.totalAmount), 0);
+
+        const difference = endingCash - expectedCash;
+
+        set(state => ({
+          shifts: state.shifts.map(s =>
+            s.id === activeShift.id
+              ? {
+                  ...s,
+                  endTime: new Date().toISOString(),
+                  endingCash,
+                  expectedCash,
+                  difference,
+                  notes,
+                  isActive: false
+                }
+              : s
+          ),
+          ...addAuditLogEntry(state, 'transaction_updated', {
+            metadata: { action: 'shift_ended', shiftId: activeShift.id, endingCash, expectedCash, difference },
+          }),
+        }));
+        debouncedSaveData(get());
+      },
+
+      getActiveShift: () => {
+        return get().shifts.find(s => s.isActive) || null;
+      },
+
+      getShiftTransactions: (shiftId) => {
+        const shift = get().shifts.find(s => s.id === shiftId);
+        if (!shift) return [];
+        return get().sellTransactions.filter(t => shift.transactions.includes(t.id));
+      },,
 
       // ========== POS ITEMS ACTIONS ==========
       addPOSItem: (data) => {
@@ -1485,14 +1632,33 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           id: `pos-${Date.now()}`,
           ...data,
         };
-        set(state => ({ posItems: [...state.posItems, newPOSItem] }));
+        set(state => ({
+          posItems: [...state.posItems, newPOSItem],
+          ...addAuditLogEntry(state, 'item_created', {
+            entityId: newPOSItem.id,
+            entityName: newPOSItem.name,
+            metadata: { category: newPOSItem.category, price: newPOSItem.sellPrice },
+          }),
+        }));
         debouncedSaveData(get());
         return newPOSItem.id;
       },
 
       updatePOSItem: (posItemId, updates) => {
+        const oldItem = get().posItems.find(i => i.id === posItemId);
         set(state => ({
-          posItems: state.posItems.map(item => item.id === posItemId ? { ...item, ...updates } : item)
+          posItems: state.posItems.map(item => item.id === posItemId ? { ...item, ...updates } : item),
+          ...addAuditLogEntry(state, 'item_updated', {
+            entityId: posItemId,
+            entityName: oldItem?.name,
+            changes: Object.keys(updates).reduce((acc, key) => {
+              acc[key] = {
+                old: (oldItem as any)?.[key],
+                new: (updates as any)[key],
+              };
+              return acc;
+            }, {} as Record<string, { old?: unknown; new?: unknown }>),
+          }),
         }));
         debouncedSaveData(get());
       },
@@ -1532,16 +1698,33 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       },
 
       updateRecipe: (recipeId, updates) => {
+        const oldRecipe = get().recipes.find(r => r.id === recipeId);
         set(state => ({
-          recipes: state.recipes.map(recipe => recipe.id === recipeId ? { ...recipe, ...updates } : recipe)
+          recipes: state.recipes.map(recipe => recipe.id === recipeId ? { ...recipe, ...updates } : recipe),
+          ...addAuditLogEntry(state, 'recipe_updated', {
+            entityId: recipeId,
+            entityName: oldRecipe?.name,
+            changes: Object.keys(updates).reduce((acc, key) => {
+              acc[key] = {
+                old: (oldRecipe as any)?.[key],
+                new: (updates as any)[key],
+              };
+              return acc;
+            }, {} as Record<string, { old?: unknown; new?: unknown }>),
+          }),
         }));
         debouncedSaveData(get());
       },
 
       deleteRecipe: (recipeId) => {
+        const recipe = get().recipes.find(r => r.id === recipeId);
         set(state => ({
           recipes: state.recipes.filter(recipe => recipe.id !== recipeId),
           posItems: state.posItems.filter(item => item.recipeId !== recipeId),
+          ...addAuditLogEntry(state, 'recipe_deleted', {
+            entityId: recipeId,
+            entityName: recipe?.name,
+          }),
         }));
         debouncedSaveData(get());
       },
@@ -1561,11 +1744,32 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
       // ========== SELL TRANSACTION ACTIONS ==========
       addSellTransaction: (transaction) => {
+        // Calculate next receipt number
+        const existingTransactions = get().sellTransactions;
+        const maxReceiptNumber = existingTransactions.reduce((max, trans) => {
+          return Math.max(max, trans.receiptNumber || 0);
+        }, 0);
+        const nextReceiptNumber = maxReceiptNumber + 1;
+
         const newTransaction: SellTransaction = {
           id: `trans-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           date: new Date().toISOString(),
+          receiptNumber: nextReceiptNumber,
           ...transaction,
         };
+
+        // Add audit log
+        set(state => ({
+          ...addAuditLogEntry(state, transaction.isRefund ? 'refund_created' : 'transaction_created', {
+            entityId: newTransaction.id,
+            metadata: {
+              receiptNumber: nextReceiptNumber,
+              totalAmount: transaction.totalAmount,
+              paymentMethod: transaction.paymentMethod,
+              itemCount: transaction.items.length,
+            },
+          }),
+        }));
 
         // Update stock for each item sold
         newTransaction.items.forEach(item => {
@@ -1581,7 +1785,18 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           }
         });
 
-        set(state => ({ sellTransactions: [...state.sellTransactions, newTransaction] }));
+        set(state => ({
+          sellTransactions: [...state.sellTransactions, newTransaction],
+          ...addAuditLogEntry(state, transaction.isRefund ? 'refund_created' : 'transaction_created', {
+            entityId: newTransaction.id,
+            metadata: {
+              receiptNumber: nextReceiptNumber,
+              totalAmount: transaction.totalAmount,
+              paymentMethod: transaction.paymentMethod,
+              itemCount: transaction.items.length,
+            },
+          }),
+        }));
         debouncedSaveData(get());
         return newTransaction.id;
       },
@@ -1608,11 +1823,25 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       },
 
       updateSellTransaction: (transactionId, updates) => {
-        set(state => ({
-          sellTransactions: state.sellTransactions.map(trans =>
-            trans.id === transactionId ? { ...trans, ...updates } : trans
-          )
-        }));
+        const oldTransaction = get().sellTransactions.find(t => t.id === transactionId);
+        set(state => {
+          const newState = {
+            sellTransactions: state.sellTransactions.map(trans =>
+              trans.id === transactionId ? { ...trans, ...updates } : trans
+            ),
+            ...addAuditLogEntry(state, 'transaction_updated', {
+              entityId: transactionId,
+              changes: Object.keys(updates).reduce((acc, key) => {
+                acc[key] = {
+                  old: (oldTransaction as any)?.[key],
+                  new: (updates as any)[key],
+                };
+                return acc;
+              }, {} as Record<string, { old?: unknown; new?: unknown }>),
+            }),
+          };
+          return newState;
+        });
         debouncedSaveData(get());
       },
 
@@ -1631,8 +1860,23 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
               }
             }
           });
+
+          // Add audit log
+          set(state => ({
+            sellTransactions: state.sellTransactions.filter(t => t.id !== transactionId),
+            ...addAuditLogEntry(state, 'transaction_deleted', {
+              entityId: transactionId,
+              metadata: {
+                receiptNumber: transaction.receiptNumber,
+                totalAmount: transaction.totalAmount,
+                paymentMethod: transaction.paymentMethod,
+                isRefund: transaction.isRefund,
+              },
+            }),
+          }));
+        } else {
+          set(state => ({ sellTransactions: state.sellTransactions.filter(t => t.id !== transactionId) }));
         }
-        set(state => ({ sellTransactions: state.sellTransactions.filter(trans => trans.id !== transactionId) }));
         debouncedSaveData(get());
       },
 
@@ -1642,16 +1886,28 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         set(state => {
           const existing = state.stockEntries[key];
           const currentQuantity = existing?.quantity || 0;
+          const newQuantity = Math.max(0, currentQuantity + quantityChange);
+
           return {
             stockEntries: {
               ...state.stockEntries,
               [key]: {
                 itemName,
                 itemUnit,
-                quantity: Math.max(0, currentQuantity + quantityChange),
+                quantity: newQuantity,
                 lastUpdated: new Date().toISOString(),
               }
-            }
+            },
+            // Add audit log for significant stock changes (only if change is non-zero)
+            ...(Math.abs(quantityChange) > 0 ? addAuditLogEntry(state, 'stock_updated', {
+              entityName: itemName,
+              metadata: {
+                unit: itemUnit,
+                oldQuantity: currentQuantity,
+                newQuantity,
+                change: quantityChange,
+              },
+            }) : {}),
           };
         });
         debouncedSaveData(get());

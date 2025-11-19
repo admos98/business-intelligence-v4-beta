@@ -162,10 +162,10 @@ const SmartAutocomplete: React.FC<SmartAutocompleteProps> = ({
           onFocus={() => value.trim() && suggestions.length > 0 && setIsOpen(true)}
           placeholder={placeholder}
           autoFocus={autoFocus}
-          className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+          className="w-full px-3 py-2 pr-20 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-sm"
         />
         {latestPrice !== undefined && (
-          <div className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-secondary bg-surface px-2 py-0.5 rounded">
+          <div className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-secondary bg-surface px-2 py-0.5 rounded z-10">
             {latestPrice.toLocaleString('fa-IR')} ریال
           </div>
         )}

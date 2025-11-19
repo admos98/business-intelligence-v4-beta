@@ -236,11 +236,15 @@ export interface POSVariant {
 export interface SellTransaction {
   id: string;
   date: string; // ISO string
+  receiptNumber?: number; // Sequential receipt number
   items: SellTransactionItem[];
-  totalAmount: number; // Revenue
-  paymentMethod: PaymentMethod;
+  totalAmount: number; // Revenue (negative for refunds)
+  paymentMethod: PaymentMethod; // Primary payment method (for backwards compatibility)
+  splitPayments?: Array<{ method: PaymentMethod; amount: number }>; // Split payment amounts
   notes?: string;
   discountAmount?: number;
+  isRefund?: boolean; // True if this is a refund/return
+  originalTransactionId?: string; // Link to original transaction if this is a refund
 }
 
 export interface SellTransactionItem {

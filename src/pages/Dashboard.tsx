@@ -44,6 +44,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
   const { addToast } = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; listId: string; listName: string; }>({ isOpen: false, listId: '', listName: '' });
   const [importConfirmOpen, setImportConfirmOpen] = useState(false);
+  const [importPreview, setImportPreview] = useState<{ data: any; isOpen: boolean }>({ data: null, isOpen: false });
 
   const vendorMap = React.useMemo(() => new Map(vendors.map(v => [v.id, v.name])), [vendors]);
 
@@ -72,9 +73,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
         try {
             const result = e.target?.result;
             if (typeof result === 'string') {
-                await importData(result);
-                addToast(t.importSuccess, 'success');
-                addToast(t.dataSynced, 'success');
+                const parsedData = JSON.parse(result);
+                // Show preview before importing
+                setImportPreview({ data: parsedData, isOpen: true });
             } else {
                 throw new Error("File could not be read as text.");
             }
@@ -88,6 +89,22 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
     };
     reader.readAsText(file);
     if(event.target) event.target.value = '';
+  };
+
+  const confirmImport = async () => {
+    if (!importPreview.data) return;
+    try {
+        await importData(JSON.stringify(importPreview.data));
+        addToast(t.importSuccess, 'success');
+        addToast(t.dataSynced, 'success');
+        setImportPreview({ data: null, isOpen: false });
+    } catch (error) {
+        addToast(t.importError, 'error');
+        console.error("Import failed:", error);
+        if (error instanceof Error && (error.message.includes('saveData'))) {
+            addToast(t.syncError, 'error');
+        }
+    }
   };
 
   const triggerImport = () => {
@@ -364,6 +381,57 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
         message={t.confirmImport}
         confirmText={t.importData}
       />
+      {/* Import Preview Modal */}
+      {importPreview.isOpen && importPreview.data && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fade-in-down">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-primary">پیش‌نمایش داده‌های ورودی</h3>
+              <button onClick={() => setImportPreview({ data: null, isOpen: false })} className="text-secondary hover:text-primary text-2xl">×</button>
+            </div>
+            <div className="space-y-4 mb-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="bg-background p-3 rounded-lg">
+                  <p className="text-secondary mb-1">لیست‌های خرید</p>
+                  <p className="font-bold text-primary">{Array.isArray(importPreview.data.lists) ? importPreview.data.lists.length : 0} لیست</p>
+                </div>
+                <div className="bg-background p-3 rounded-lg">
+                  <p className="text-secondary mb-1">تامین‌کنندگان</p>
+                  <p className="font-bold text-primary">{Array.isArray(importPreview.data.vendors) ? importPreview.data.vendors.length : 0} تامین‌کننده</p>
+                </div>
+                <div className="bg-background p-3 rounded-lg">
+                  <p className="text-secondary mb-1">کالاهای POS</p>
+                  <p className="font-bold text-primary">{Array.isArray(importPreview.data.posItems) ? importPreview.data.posItems.length : 0} کالا</p>
+                </div>
+                <div className="bg-background p-3 rounded-lg">
+                  <p className="text-secondary mb-1">فروش‌ها</p>
+                  <p className="font-bold text-primary">{Array.isArray(importPreview.data.sellTransactions) ? importPreview.data.sellTransactions.length : 0} فروش</p>
+                </div>
+                <div className="bg-background p-3 rounded-lg">
+                  <p className="text-secondary mb-1">دستورهای پخت</p>
+                  <p className="font-bold text-primary">{Array.isArray(importPreview.data.recipes) ? importPreview.data.recipes.length : 0} دستور</p>
+                </div>
+                <div className="bg-background p-3 rounded-lg">
+                  <p className="text-secondary mb-1">موجودی</p>
+                  <p className="font-bold text-primary">{importPreview.data.stockEntries ? Object.keys(importPreview.data.stockEntries).length : 0} مورد</p>
+                </div>
+              </div>
+              <div className="bg-warning/10 border border-warning/30 rounded-lg p-3">
+                <p className="text-sm text-warning font-semibold mb-1">⚠️ هشدار</p>
+                <p className="text-xs text-secondary">با تایید، تمام اطلاعات فعلی بازنویسی خواهد شد و قابل بازگشت نیست.</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setImportPreview({ data: null, isOpen: false })} fullWidth>
+                انصراف
+              </Button>
+              <Button variant="danger" onClick={confirmImport} fullWidth>
+                تایید و ورود داده
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </>
   );
 };
