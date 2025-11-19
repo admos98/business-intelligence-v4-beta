@@ -31,6 +31,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   // Customization modal state
   const [modalItem, setModalItem] = useState<POSItem | null>(null);
   const [modalQty, setModalQty] = useState<number>(1);
+  const [modalVariantId, setModalVariantId] = useState<string | undefined>(undefined);
   const [modalCustomizations, setModalCustomizations] = useState<Record<string, string | number | { optionId: string; amount: number }>>({});
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Cash);
   const [splitPayments, setSplitPayments] = useState<Array<{ method: PaymentMethod; amount: number }>>([]);
@@ -38,6 +39,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const [discountAmount, setDiscountAmount] = useState(0);
   const [showNewItemForm, setShowNewItemForm] = useState(false);
   const [newItemForm, setNewItemForm] = useState({ name: '', category: '', sellPrice: 0 });
+  const [newItemVariants, setNewItemVariants] = useState<Array<{ id: string; name: string; priceModifier: number }>>([]);
   const [editingItem, setEditingItem] = useState<POSItem | null>(null);
   const [deleteItemConfirm, setDeleteItemConfirm] = useState<string | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<SellTransaction | null>(null);
@@ -57,6 +59,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   });
   const [showShiftModal, setShowShiftModal] = useState<boolean>(false);
   const [shiftStartingCash, setShiftStartingCash] = useState<number>(0);
+  const [endingCash, setEndingCash] = useState<number>(0);
+  const [shiftNotes, setShiftNotes] = useState<string>('');
   const { addToast } = useToast();
   const { setActions } = usePageActions();
 
@@ -93,14 +97,22 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const cartTotal = cartArray.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
   const finalTotal = Math.max(0, cartTotal - discountAmount);
 
-  const handleAddToCart = (posItem: POSItem, opts?: { customizations?: Record<string, string | number | { optionId: string; amount: number }>; quantity?: number }) => {
+  const handleAddToCart = (posItem: POSItem, opts?: { variantId?: string; customizations?: Record<string, string | number | { optionId: string; amount: number }>; quantity?: number }) => {
     setCart(prev => {
       const newCart = new Map(prev);
-      const key = opts && Object.keys(opts.customizations || {}).length > 0
-        ? `${posItem.id}::${JSON.stringify(opts.customizations || {})}`
-        : posItem.id;
+
+      // Include variant in key if selected
+      const variantKey = opts?.variantId ? `::variant:${opts.variantId}` : '';
+      const customizationKey = opts && Object.keys(opts.customizations || {}).length > 0
+        ? `::${JSON.stringify(opts.customizations || {})}`
+        : '';
+      const key = `${posItem.id}${variantKey}${customizationKey}`;
 
       const existing = newCart.get(key);
+
+      // Get selected variant
+      const selectedVariant = opts?.variantId ? posItem.variants?.find(v => v.id === opts.variantId) : null;
+      const variantPriceModifier = selectedVariant?.priceModifier || 0;
 
       // Calculate price from base item customizations
       const customizationPrice = (opts?.customizations && Object.keys(opts.customizations).length > 0 && posItem.customizations)
@@ -128,10 +140,13 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
           }, 0)
         : 0;
 
-      const unitPrice = posItem.sellPrice + customizationPrice;
+      const unitPrice = posItem.sellPrice + variantPriceModifier + customizationPrice;
 
-      // Build display name with customizations
+      // Build display name with variant and customizations
       let displayName = posItem.name;
+      if (selectedVariant) {
+        displayName += ` (${selectedVariant.name})`;
+      }
       if (opts?.customizations && Object.keys(opts.customizations).length > 0) {
         const custParts: string[] = [];
         Object.entries(opts.customizations).forEach(([custName, custValue]) => {
@@ -182,6 +197,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const openCustomizationModal = (item: POSItem) => {
     setModalItem(item);
     setModalQty(1);
+    setModalVariantId(undefined);
     setModalCustomizations({});
   };
 
@@ -203,15 +219,40 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const confirmCloseModal = () => {
     setModalItem(null);
     setModalQty(1);
+    setModalVariantId(undefined);
     setModalCustomizations({});
     setCancelModalConfirm(false);
   };
 
   const confirmModalAdd = () => {
     if (!modalItem) return;
-    handleAddToCart(modalItem, { customizations: modalCustomizations, quantity: modalQty });
+    handleAddToCart(modalItem, { variantId: modalVariantId, customizations: modalCustomizations, quantity: modalQty });
     closeModal();
   };
+
+  // Update endingCash when shift modal opens or active shift changes
+  useEffect(() => {
+    if (showShiftModal) {
+      const activeShift = getActiveShift();
+      if (activeShift) {
+        const shiftTransactions = getShiftTransactions(activeShift.id);
+        const cashTransactions = shiftTransactions.filter((t: SellTransaction) => t.paymentMethod === PaymentMethod.Cash && !t.isRefund);
+        const cashRefunds = shiftTransactions.filter((t: SellTransaction) => t.isRefund && t.paymentMethod === PaymentMethod.Cash);
+        const expectedCash = activeShift.startingCash +
+          cashTransactions.reduce((sum: number, t: SellTransaction) => sum + t.totalAmount, 0) -
+          cashRefunds.reduce((sum: number, t: SellTransaction) => sum + Math.abs(t.totalAmount), 0);
+        setEndingCash(expectedCash);
+      } else {
+        setEndingCash(0);
+      }
+      if (!shiftNotes) {
+        setShiftNotes('');
+      }
+    } else {
+      // Reset when modal closes
+      setShiftNotes('');
+    }
+  }, [showShiftModal, getActiveShift, getShiftTransactions]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -459,7 +500,6 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     }
   };
 
-  // Variants removed - using only base item customizations
   const [newItemCustomizations, setNewItemCustomizations] = useState<{
     id: string;
     name: string;
@@ -478,7 +518,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       name: newItemForm.name,
       category: newItemForm.category,
       sellPrice: newItemForm.sellPrice,
-      variants: undefined, // No variants - only base item customizations
+      variants: newItemVariants.length > 0 ? newItemVariants : undefined,
       customizations: newItemCustomizations.length > 0 ? newItemCustomizations.map(c => ({
         id: c.id,
         name: c.name,
@@ -501,6 +541,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
 
     setNewItemForm({ name: '', category: '', sellPrice: 0 });
     setNewItemCustomizations([]);
+    setNewItemVariants([]);
     setShowNewItemForm(false);
     addToast('کالای جدید اضافه شد', 'success');
   };
@@ -508,6 +549,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const handleEditItem = (item: POSItem) => {
     setEditingItem(item);
     setNewItemForm({ name: item.name, category: item.category, sellPrice: item.sellPrice });
+    setNewItemVariants(item.variants?.map(v => ({ id: v.id, name: v.name, priceModifier: v.priceModifier })) || []);
     setNewItemCustomizations(item.customizations?.map(c => ({
       id: c.id,
       name: c.name,
@@ -541,7 +583,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       name: newItemForm.name,
       category: newItemForm.category,
       sellPrice: newItemForm.sellPrice,
-      variants: undefined, // No variants - only base item customizations
+      variants: newItemVariants.length > 0 ? newItemVariants : undefined,
       customizations: newItemCustomizations.length > 0 ? newItemCustomizations.map(c => ({
         id: c.id,
         name: c.name,
@@ -563,6 +605,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     setEditingItem(null);
     setNewItemForm({ name: '', category: '', sellPrice: 0 });
     setNewItemCustomizations([]);
+    setNewItemVariants([]);
     setShowNewItemForm(false);
     addToast('کالا به‌روزرسانی شد', 'success');
   };
@@ -1003,6 +1046,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                     setEditingItem(null);
                     setNewItemForm({ name: '', category: selectedCategory || '', sellPrice: 0 });
                     setNewItemCustomizations([]);
+                    setNewItemVariants([]);
                     setShowNewItemForm(true);
                   }}
                   variant="primary"
@@ -1130,6 +1174,52 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                         onChange={(e) => setNewItemForm({ ...newItemForm, sellPrice: parseFloat(e.target.value) || 0 })}
                         className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
                       />
+                    </div>
+                  </div>
+
+                  {/* VARIANTS EDITOR */}
+                  <div className="mt-4">
+                    <label className="text-sm font-medium text-primary block mb-2">
+                      انواع/ورژن‌ها (اختیاری)
+                      <span className="text-xs text-secondary block mt-1">مثال: کوچک، متوسط، بزرگ</span>
+                    </label>
+                    <div className="space-y-2">
+                      {newItemVariants.map((variant, variantIdx) => (
+                        <div key={variant.id} className="flex gap-2 items-center p-2 bg-background rounded-lg border border-border">
+                          <input
+                            type="text"
+                            value={variant.name}
+                            onChange={e => setNewItemVariants(prev => prev.map((v, i) => i === variantIdx ? { ...v, name: e.target.value } : v))}
+                            className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg text-sm"
+                            placeholder="نام نوع (مثال: بزرگ)"
+                          />
+                          <input
+                            type="number"
+                            value={variant.priceModifier || ''}
+                            onChange={e => setNewItemVariants(prev => prev.map((v, i) => i === variantIdx ? { ...v, priceModifier: parseFloat(e.target.value) || 0 } : v))}
+                            className="w-32 px-3 py-2 bg-surface border border-border rounded-lg text-sm"
+                            placeholder="تغییر قیمت"
+                          />
+                          <span className="text-xs text-secondary">ریال</span>
+                          <Button variant="danger" size="sm" onClick={() => setNewItemVariants(prev => prev.filter((_, i) => i !== variantIdx))}>
+                            ×
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setNewItemVariants(prev => [...prev, {
+                            id: `variant-${Date.now()}-${Math.random()}`,
+                            name: '',
+                            priceModifier: 0
+                          }]);
+                        }}
+                        fullWidth
+                      >
+                        + افزودن نوع
+                      </Button>
                     </div>
                   </div>
 
@@ -1291,6 +1381,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                         setShowNewItemForm(false);
                         setNewItemForm({ name: '', category: '', sellPrice: 0 });
                         setNewItemCustomizations([]);
+                        setNewItemVariants([]);
                       }}
                       fullWidth
                     >
@@ -1694,6 +1785,40 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
               </button>
             </div>
             <div className="space-y-4">
+              {/* Variant Selection */}
+              {modalItem.variants && modalItem.variants.length > 0 && (
+                <div className="space-y-2 pb-2 border-b border-border">
+                  <label className="text-sm font-medium text-primary block">نوع/ورژن</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setModalVariantId(undefined)}
+                      className={`px-3 py-2 rounded-lg border-2 transition-colors text-sm text-right ${
+                        modalVariantId === undefined
+                          ? 'bg-accent text-accent-text border-accent'
+                          : 'bg-surface text-primary border-border hover:bg-border'
+                      }`}
+                    >
+                      پایه ({modalItem.sellPrice.toLocaleString()} ریال)
+                    </button>
+                    {modalItem.variants.map(variant => (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        onClick={() => setModalVariantId(variant.id)}
+                        className={`px-3 py-2 rounded-lg border-2 transition-colors text-sm text-right ${
+                          modalVariantId === variant.id
+                            ? 'bg-accent text-accent-text border-accent'
+                            : 'bg-surface text-primary border-border hover:bg-border'
+                        }`}
+                      >
+                        {variant.name} ({(modalItem.sellPrice + variant.priceModifier).toLocaleString()} ریال)
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Base item customizations */}
               {modalItem.customizations && modalItem.customizations.length > 0 && (
                 <div className="space-y-4 pt-2 border-t border-border">
@@ -2149,8 +2274,6 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
             cashTransactions.reduce((sum: number, t: SellTransaction) => sum + t.totalAmount, 0) -
             cashRefunds.reduce((sum: number, t: SellTransaction) => sum + Math.abs(t.totalAmount), 0)
           : 0;
-        const [endingCash, setEndingCash] = useState<number>(expectedCash);
-        const [shiftNotes, setShiftNotes] = useState<string>('');
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -2238,6 +2361,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                         try {
                           endShift(endingCash, shiftNotes || undefined);
                           setShowShiftModal(false);
+                          setShiftNotes('');
+                          setEndingCash(0);
                           addToast('شیفت با موفقیت بسته شد', 'success');
                         } catch (error) {
                           addToast('خطا در بستن شیفت', 'error');
@@ -2277,6 +2402,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                         startShift(shiftStartingCash);
                         setShowShiftModal(false);
                         setShiftStartingCash(0);
+                        setShiftNotes('');
                         addToast('شیفت جدید شروع شد', 'success');
                       }}
                       fullWidth
