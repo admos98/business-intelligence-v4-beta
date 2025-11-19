@@ -31,7 +31,6 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   // Customization modal state
   const [modalItem, setModalItem] = useState<POSItem | null>(null);
   const [modalQty, setModalQty] = useState<number>(1);
-  const [modalVariantId, setModalVariantId] = useState<string | undefined>(undefined);
   const [modalCustomizations, setModalCustomizations] = useState<Record<string, string | number | { optionId: string; amount: number }>>({});
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Cash);
   const [discountAmount, setDiscountAmount] = useState(0);
@@ -46,8 +45,6 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
 
   // Refs for form elements to avoid direct DOM manipulation
   const itemFormRef = useRef<HTMLDivElement>(null);
-  const newVariantNameRef = useRef<HTMLInputElement>(null);
-  const newVariantPriceRef = useRef<HTMLInputElement>(null);
 
   // Get POS categories - use separate POS categories from store
   const posCategories = useMemo(() => {
@@ -79,18 +76,17 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const cartTotal = cartArray.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
   const finalTotal = Math.max(0, cartTotal - discountAmount);
 
-  const handleAddToCart = (posItem: POSItem, opts?: { variantId?: string; customizations?: Record<string, string | number | { optionId: string; amount: number }>; quantity?: number }) => {
+  const handleAddToCart = (posItem: POSItem, opts?: { customizations?: Record<string, string | number | { optionId: string; amount: number }>; quantity?: number }) => {
     setCart(prev => {
       const newCart = new Map(prev);
-      const key = opts && (opts.variantId || Object.keys(opts.customizations || {}).length > 0)
-        ? `${posItem.id}::${opts.variantId || ''}::${JSON.stringify(opts.customizations || {})}`
+      const key = opts && Object.keys(opts.customizations || {}).length > 0
+        ? `${posItem.id}::${JSON.stringify(opts.customizations || {})}`
         : posItem.id;
 
       const existing = newCart.get(key);
-      const variant = opts?.variantId ? (posItem.variants || []).find(v => v.id === opts.variantId) : undefined;
 
-      // Calculate price from global customizations
-      const globalCustomizationPrice = (opts?.customizations && Object.keys(opts.customizations).length > 0 && posItem.customizations)
+      // Calculate price from base item customizations
+      const customizationPrice = (opts?.customizations && Object.keys(opts.customizations).length > 0 && posItem.customizations)
         ? Object.entries(opts!.customizations!).reduce((s, [k, v]) => {
             const cust = posItem.customizations!.find(c => c.name === k);
             if (!cust) return s;
@@ -114,38 +110,10 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
           }, 0)
         : 0;
 
-      // Calculate price from variant-specific customizations
-      const variantCustomizationPrice = (variant && opts?.customizations && Object.keys(opts.customizations).length > 0 && variant.customizations)
-        ? Object.entries(opts!.customizations!).reduce((s, [k, v]) => {
-            const cust = variant.customizations!.find(c => c.name === k);
-            if (!cust) return s;
+      const unitPrice = posItem.sellPrice + customizationPrice;
 
-            // If customization has options, find the selected option
-            if (cust.options && cust.options.length > 0) {
-              const optionId = typeof v === 'string' ? v : (typeof v === 'object' && v !== null && 'optionId' in v ? (v as { optionId: string }).optionId : String(v));
-              const selectedOption = cust.options.find(opt => opt.id === optionId);
-              if (selectedOption) {
-                // If it's a custom amount option, calculate based on amount
-                if (selectedOption.isCustomAmount && selectedOption.pricePerUnit && typeof v === 'object' && v !== null && 'amount' in v) {
-                  const amount = (v as { amount: number }).amount || 0;
-                  return s + (selectedOption.pricePerUnit * amount);
-                }
-                return s + selectedOption.price;
-              }
-            }
-
-            // Fallback to priceModifier for legacy customizations
-            return s + (cust?.priceModifier || 0) * (typeof v === 'number' ? Number(v) : 1);
-          }, 0)
-        : 0;
-
-      const unitPrice = posItem.sellPrice + (variant ? variant.priceModifier : 0) + globalCustomizationPrice + variantCustomizationPrice;
-
-      // Build display name with variant and customizations
+      // Build display name with customizations
       let displayName = posItem.name;
-      if (variant) {
-        displayName += ` (${variant.name})`;
-      }
       if (opts?.customizations && Object.keys(opts.customizations).length > 0) {
         const custParts: string[] = [];
         Object.entries(opts.customizations).forEach(([custName, custValue]) => {
@@ -192,24 +160,22 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     });
   };
 
-  // Open customization modal for an item (slower path for complex orders)
+  // Open customization modal for an item
   const openCustomizationModal = (item: POSItem) => {
     setModalItem(item);
     setModalQty(1);
-    setModalVariantId(item.variants && item.variants.length > 0 ? item.variants[0].id : undefined);
     setModalCustomizations({});
   };
 
   const closeModal = () => {
     setModalItem(null);
     setModalQty(1);
-    setModalVariantId(undefined);
     setModalCustomizations({});
   };
 
   const confirmModalAdd = () => {
     if (!modalItem) return;
-    handleAddToCart(modalItem, { variantId: modalVariantId, customizations: modalCustomizations, quantity: modalQty });
+    handleAddToCart(modalItem, { customizations: modalCustomizations, quantity: modalQty });
     closeModal();
   };
 
@@ -375,19 +341,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     }
   };
 
-  // New POS item creation supports variants and customizations
-  const [newItemVariants, setNewItemVariants] = useState<{
-    id: string;
-    name: string;
-    priceModifier: number;
-    customizations?: {
-      id: string;
-      name: string;
-      type: 'select' | 'number' | 'text';
-      options?: { id: string; label: string; price: number; isCustomAmount?: boolean; unit?: string; pricePerUnit?: number }[];
-      priceModifier?: number;
-    }[];
-  }[]>([]);
+  // Variants removed - using only base item customizations
   const [newItemCustomizations, setNewItemCustomizations] = useState<{
     id: string;
     name: string;
@@ -407,25 +361,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       category: newItemForm.category,
       sellPrice: newItemForm.sellPrice,
       unit: Unit.Piece,
-      variants: newItemVariants.map(v => ({
-        id: v.id,
-        name: v.name,
-        priceModifier: v.priceModifier,
-        customizations: v.customizations?.map(c => ({
-          id: c.id,
-          name: c.name,
-          type: c.type,
-          options: c.options?.map(opt => ({
-            id: opt.id,
-            label: opt.label,
-            price: opt.price,
-            isCustomAmount: opt.isCustomAmount,
-            unit: opt.unit,
-            pricePerUnit: opt.pricePerUnit
-          })),
-          priceModifier: c.priceModifier
-        }))
-      })),
+      variants: undefined, // No variants - only base item customizations
       customizations: newItemCustomizations.length > 0 ? newItemCustomizations.map(c => ({
         id: c.id,
         name: c.name,
@@ -445,7 +381,6 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     addPOSItem(payload);
 
     setNewItemForm({ name: '', category: '', sellPrice: 0 });
-    setNewItemVariants([]);
     setNewItemCustomizations([]);
     setShowNewItemForm(false);
     addToast('کالای جدید اضافه شد', 'success');
@@ -454,25 +389,6 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   const handleEditItem = (item: POSItem) => {
     setEditingItem(item);
     setNewItemForm({ name: item.name, category: item.category, sellPrice: item.sellPrice });
-    setNewItemVariants(item.variants?.map(v => ({
-      id: v.id,
-      name: v.name,
-      priceModifier: v.priceModifier,
-      customizations: v.customizations?.map(c => ({
-        id: c.id,
-        name: c.name,
-        type: c.type,
-        options: c.options?.map(opt => ({
-          id: opt.id,
-          label: opt.label,
-          price: opt.price,
-          isCustomAmount: opt.isCustomAmount,
-          unit: opt.unit,
-          pricePerUnit: opt.pricePerUnit
-        })),
-        priceModifier: c.priceModifier || 0
-      }))
-    })) || []);
     setNewItemCustomizations(item.customizations?.map(c => ({
       id: c.id,
       name: c.name,
@@ -504,25 +420,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       name: newItemForm.name,
       category: newItemForm.category,
       sellPrice: newItemForm.sellPrice,
-      variants: newItemVariants.map(v => ({
-        id: v.id,
-        name: v.name,
-        priceModifier: v.priceModifier,
-        customizations: v.customizations?.map(c => ({
-          id: c.id,
-          name: c.name,
-          type: c.type,
-          options: c.options?.map(opt => ({
-            id: opt.id,
-            label: opt.label,
-            price: opt.price,
-            isCustomAmount: opt.isCustomAmount,
-            unit: opt.unit,
-            pricePerUnit: opt.pricePerUnit
-          })),
-          priceModifier: c.priceModifier
-        }))
-      })),
+      variants: undefined, // No variants - only base item customizations
       customizations: newItemCustomizations.length > 0 ? newItemCustomizations.map(c => ({
         id: c.id,
         name: c.name,
@@ -541,7 +439,6 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
 
     setEditingItem(null);
     setNewItemForm({ name: '', category: '', sellPrice: 0 });
-    setNewItemVariants([]);
     setNewItemCustomizations([]);
     setShowNewItemForm(false);
     addToast('کالا به‌روزرسانی شد', 'success');
@@ -735,7 +632,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                     <button
                       key={item.id}
                       onClick={() => {
-                        if (item.variants && item.variants.length > 0) {
+                        // Always open customization modal if item has customizations, otherwise add directly
+                        if (item.customizations && item.customizations.length > 0) {
                           openCustomizationModal(item);
                         } else {
                           handleAddToCart(item);
@@ -763,7 +661,6 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                   onClick={() => {
                     setEditingItem(null);
                     setNewItemForm({ name: '', category: selectedCategory || '', sellPrice: 0 });
-                    setNewItemVariants([]);
                     setNewItemCustomizations([]);
                     setShowNewItemForm(true);
                   }}
@@ -781,7 +678,6 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                     onClick={() => {
                       setEditingItem(null);
                       setNewItemForm({ name: '', category: selectedCategory || '', sellPrice: 0 });
-                      setNewItemVariants([]);
                       setNewItemCustomizations([]);
                       setShowNewItemForm(true);
                     }}
@@ -802,7 +698,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                       >
                         <button
                           onClick={() => {
-                            if (item.variants && item.variants.length > 0) {
+                            // Always open customization modal if item has customizations, otherwise add directly
+                            if (item.customizations && item.customizations.length > 0) {
                               openCustomizationModal(item);
                             } else {
                               handleAddToCart(item);
@@ -1042,246 +939,6 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                     </div>
                   </div>
 
-                  {/* VARIANTS EDITOR - Simplified */}
-                  <div className="mt-4">
-                    <label className="text-sm font-medium text-primary block mb-2">
-                      ورژن‌ها (اختیاری)
-                      <span className="text-xs text-secondary block mt-1 font-normal">
-                        ورژن‌ها برای اقلامی که چند نوع مختلف دارند (مثال: قهوه با انواع مختلف). هر ورژن می‌تواند قیمت و سفارشی‌سازی‌های خاص خود را داشته باشد.
-                      </span>
-                    </label>
-                    <div className="space-y-3">
-                      {newItemVariants.map((v, idx) => (
-                        <div key={v.id} className="p-3 bg-background rounded-lg border border-border">
-                          <div className="flex gap-2 items-center mb-2">
-                            <input
-                              value={v.name}
-                              onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))}
-                              className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-                              placeholder="نام ورژن (مثال: قهوه اسپرسو)"
-                            />
-                            <input
-                              type="number"
-                              value={String(v.priceModifier)}
-                              onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? { ...p, priceModifier: parseFloat(e.target.value) || 0 } : p))}
-                              className="w-28 px-2 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-                              placeholder="±قیمت"
-                            />
-                            <Button variant="danger" size="sm" onClick={() => setNewItemVariants(prev => prev.filter((_, i) => i !== idx))}>
-                              حذف
-                            </Button>
-                          </div>
-
-                          {/* Variant-specific customizations - Full editor like base item */}
-                          <div className="mt-3 pt-3 border-t border-border">
-                            <label className="text-xs font-medium text-secondary block mb-2">
-                              سفارشی‌سازی‌های این ورژن (مثال: خطوط قهوه، شربت، بیرون‌بر/کافه)
-                            </label>
-                            <div className="space-y-3">
-                              {(v.customizations || []).map((cust, custIdx) => (
-                                <div key={cust.id} className="p-2 bg-surface rounded-lg border border-border">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="flex-1">
-                                      <input
-                                        value={cust.name}
-                                        onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                          ...p,
-                                          customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? { ...c, name: e.target.value } : c)
-                                        } : p))}
-                                        className="w-full px-2 py-1 bg-background border border-border rounded text-sm"
-                                        placeholder="نام سفارشی‌سازی (مثال: خطوط قهوه)"
-                                      />
-                                    </div>
-                                    <select
-                                      value={cust.type}
-                                      onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                        ...p,
-                                        customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? { ...c, type: e.target.value as 'select' | 'number' | 'text' } : c)
-                                      } : p))}
-                                      className="ml-2 px-2 py-1 bg-background border border-border rounded text-sm"
-                                    >
-                                      <option value="select">انتخابی</option>
-                                      <option value="number">عدد</option>
-                                      <option value="text">متن</option>
-                                    </select>
-                                    <Button
-                                      variant="danger"
-                                      size="sm"
-                                      onClick={() => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                        ...p,
-                                        customizations: (p.customizations || []).filter((_, ci) => ci !== custIdx)
-                                      } : p))}
-                                      className="ml-2"
-                                    >
-                                      حذف
-                                    </Button>
-                                  </div>
-
-                                  {/* Options for select type */}
-                                  {cust.type === 'select' && (
-                                    <div className="mt-2 space-y-2">
-                                      <label className="text-xs text-secondary block mb-1">گزینه‌ها:</label>
-                                      {cust.options?.map((opt, optIdx) => (
-                                        <div key={opt.id} className="flex gap-2 items-center">
-                                          <input
-                                            value={opt.label}
-                                            onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                              ...p,
-                                              customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                                ...c,
-                                                options: c.options?.map((o, oi) => oi === optIdx ? { ...o, label: e.target.value } : o) || []
-                                              } : c)
-                                            } : p))}
-                                            className="flex-1 px-2 py-1 bg-background border border-border rounded text-sm"
-                                            placeholder="برچسب (مثال: 8/20 Robusta)"
-                                          />
-                                          <input
-                                            type="number"
-                                            value={String(opt.price)}
-                                            onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                              ...p,
-                                              customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                                ...c,
-                                                options: c.options?.map((o, oi) => oi === optIdx ? { ...o, price: parseFloat(e.target.value) || 0 } : o) || []
-                                              } : c)
-                                            } : p))}
-                                            className="w-24 px-2 py-1 bg-background border border-border rounded text-sm"
-                                            placeholder="قیمت"
-                                          />
-                                          <label className="flex items-center gap-1 text-xs">
-                                            <input
-                                              type="checkbox"
-                                              checked={opt.isCustomAmount || false}
-                                              onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                                ...p,
-                                                customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                                  ...c,
-                                                  options: c.options?.map((o, oi) => oi === optIdx ? { ...o, isCustomAmount: e.target.checked } : o) || []
-                                                } : c)
-                                              } : p))}
-                                            />
-                                            مقدار سفارشی
-                                          </label>
-                                          {opt.isCustomAmount && (
-                                            <>
-                                              <input
-                                                value={opt.unit || ''}
-                                                onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                                  ...p,
-                                                  customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                                    ...c,
-                                                    options: c.options?.map((o, oi) => oi === optIdx ? { ...o, unit: e.target.value } : o) || []
-                                                  } : c)
-                                                } : p))}
-                                                className="w-16 px-1 py-1 bg-background border border-border rounded text-sm"
-                                                placeholder="واحد"
-                                              />
-                                              <input
-                                                type="number"
-                                                value={String(opt.pricePerUnit || '')}
-                                                onChange={e => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                                  ...p,
-                                                  customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                                    ...c,
-                                                    options: c.options?.map((o, oi) => oi === optIdx ? { ...o, pricePerUnit: parseFloat(e.target.value) || 0 } : o) || []
-                                                  } : c)
-                                                } : p))}
-                                                className="w-24 px-1 py-1 bg-background border border-border rounded text-sm"
-                                                placeholder="قیمت/واحد"
-                                              />
-                                            </>
-                                          )}
-                                          <Button
-                                            variant="danger"
-                                            size="sm"
-                                            onClick={() => setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                              ...p,
-                                              customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                                ...c,
-                                                options: c.options?.filter((_, oi) => oi !== optIdx) || []
-                                              } : c)
-                                            } : p))}
-                                          >
-                                            ×
-                                          </Button>
-                                        </div>
-                                      ))}
-                                      <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={() => {
-                                          const newOptId = `opt-${Date.now()}-${Math.random()}`;
-                                          setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                            ...p,
-                                            customizations: (p.customizations || []).map((c, ci) => ci === custIdx ? {
-                                              ...c,
-                                              options: [...(c.options || []), { id: newOptId, label: '', price: 0 }]
-                                            } : c)
-                                          } : p));
-                                        }}
-                                      >
-                                        + افزودن گزینه
-                                      </Button>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => {
-                                  const newCustId = `cust-${Date.now()}-${Math.random()}`;
-                                  setNewItemVariants(prev => prev.map((p, i) => i === idx ? {
-                                    ...p,
-                                    customizations: [...(p.customizations || []), {
-                                      id: newCustId,
-                                      name: '',
-                                      type: 'select',
-                                      options: []
-                                    }]
-                                  } : p));
-                                }}
-                              >
-                                + افزودن سفارشی‌سازی به این ورژن
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      <div className="flex gap-2">
-                        <input
-                          ref={newVariantNameRef}
-                          placeholder="نام ورژن جدید"
-                          className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-                        />
-                        <input
-                          ref={newVariantPriceRef}
-                          type="number"
-                          placeholder="±قیمت"
-                          className="w-28 px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent text-sm"
-                        />
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => {
-                            if (!newVariantNameRef.current) return;
-                            const name = newVariantNameRef.current.value.trim();
-                            const price = newVariantPriceRef.current ? parseFloat(newVariantPriceRef.current.value) || 0 : 0;
-                            if (!name) {
-                              addToast('لطفاً نام ورژن را وارد کنید', 'error');
-                              return;
-                            }
-                            setNewItemVariants(prev => [...prev, { id: `var-${Date.now()}-${Math.random()}`, name, priceModifier: price, customizations: [] }]);
-                            newVariantNameRef.current.value = '';
-                            if (newVariantPriceRef.current) newVariantPriceRef.current.value = '';
-                            addToast(`ورژن "${name}" اضافه شد`, 'success');
-                          }}
-                        >
-                          + ورژن
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
 
                   <div className="flex gap-2 pt-2 border-t border-border">
                     <Button
@@ -1289,7 +946,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                       onClick={() => {
                         setShowNewItemForm(false);
                         setNewItemForm({ name: '', category: '', sellPrice: 0 });
-                        setNewItemVariants([]);
+                        setNewItemCustomizations([]);
                       }}
                       fullWidth
                     >
@@ -1464,134 +1121,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
               </button>
             </div>
             <div className="space-y-4">
-              {modalItem.variants && modalItem.variants.length > 0 && (
-                <div>
-                  <label className="text-sm font-medium text-primary block mb-2">انتخاب ورژن</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => {
-                        setModalVariantId(undefined);
-                        // Reset customizations when variant changes
-                        setModalCustomizations({});
-                      }}
-                      className={`px-4 py-2 rounded-lg border-2 transition-colors text-sm ${
-                        !modalVariantId
-                          ? 'bg-accent text-accent-text border-accent'
-                          : 'bg-surface text-primary border-border hover:bg-border'
-                      }`}
-                    >
-                      پایه
-                    </button>
-                    {modalItem.variants.map(v => (
-                      <button
-                        key={v.id}
-                        onClick={() => {
-                          setModalVariantId(v.id);
-                          // Reset customizations when variant changes
-                          setModalCustomizations({});
-                        }}
-                        className={`px-4 py-2 rounded-lg border-2 transition-colors text-sm ${
-                          modalVariantId === v.id
-                            ? 'bg-accent text-accent-text border-accent'
-                            : 'bg-surface text-primary border-border hover:bg-border'
-                        }`}
-                      >
-                        {v.name}
-                        {v.priceModifier !== 0 && (
-                          <span className="text-xs block mt-1">
-                            {v.priceModifier > 0 ? '+' : ''}{v.priceModifier.toLocaleString()} ریال
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Variant-specific customizations */}
-              {modalVariantId && modalItem.variants && (() => {
-                const selectedVariant = modalItem.variants.find(v => v.id === modalVariantId);
-                return selectedVariant?.customizations && selectedVariant.customizations.length > 0 ? (
-                  <div className="space-y-4 pt-2 border-t border-border">
-                    <label className="text-sm font-medium text-primary block">سفارشی‌سازی‌های {selectedVariant.name}</label>
-                    {selectedVariant.customizations.map(c => (
-                      <div key={c.id || c.name} className="space-y-2">
-                        <label className="text-sm font-medium text-primary block">{c.name}</label>
-
-                        {c.type === 'select' && c.options && c.options.length > 0 ? (
-                          <div className="grid grid-cols-2 gap-2">
-                            {c.options.map(opt => (
-                              <button
-                                key={opt.id}
-                                onClick={() => {
-                                  const currentValue = modalCustomizations[c.name];
-                                  if (opt.isCustomAmount) {
-                                    // For custom amount options, show input
-                                    const amount = typeof currentValue === 'object' && currentValue !== null && 'amount' in currentValue
-                                      ? (currentValue as { amount: number }).amount
-                                      : 0;
-                                    const newAmount = prompt(`مقدار ${opt.unit || ''} را وارد کنید:`, String(amount));
-                                    if (newAmount !== null) {
-                                      const numAmount = parseFloat(newAmount) || 0;
-                                      setModalCustomizations(prev => ({
-                                        ...prev,
-                                        [c.name]: { optionId: opt.id, amount: numAmount }
-                                      }));
-                                    }
-                                  } else {
-                                    setModalCustomizations(prev => ({
-                                      ...prev,
-                                      [c.name]: opt.id
-                                    }));
-                                  }
-                                }}
-                                className={`px-3 py-2 rounded-lg border-2 transition-colors text-sm ${
-                                  (() => {
-                                    const val = modalCustomizations[c.name];
-                                    if (typeof val === 'string' && val === opt.id) return true;
-                                    if (typeof val === 'object' && val !== null && 'optionId' in val) {
-                                      return (val as { optionId: string }).optionId === opt.id;
-                                    }
-                                    return false;
-                                  })()
-                                    ? 'bg-accent text-accent-text border-accent'
-                                    : 'bg-surface text-primary border-border hover:bg-border'
-                                }`}
-                              >
-                                {opt.label}
-                                {opt.price !== 0 && (
-                                  <span className="text-xs block mt-1">
-                                    {opt.price > 0 ? '+' : ''}{opt.price.toLocaleString()} ریال
-                                    {opt.isCustomAmount && opt.pricePerUnit && (
-                                      <span> ({opt.pricePerUnit.toLocaleString()} ریال/{opt.unit})</span>
-                                    )}
-                                  </span>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        ) : c.type === 'number' ? (
-                          <input
-                            type="number"
-                            value={String(modalCustomizations[c.name] || 0)}
-                            onChange={e => setModalCustomizations(prev => ({ ...prev, [c.name]: parseFloat(e.target.value) || 0 }))}
-                            className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
-                          />
-                        ) : (
-                          <input
-                            type="text"
-                            value={String(modalCustomizations[c.name] || '')}
-                            onChange={e => setModalCustomizations(prev => ({ ...prev, [c.name]: e.target.value }))}
-                            className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : null;
-              })()}
-
-              {/* Global customizations */}
+              {/* Base item customizations */}
               {modalItem.customizations && modalItem.customizations.length > 0 && (
                 <div className="space-y-4 pt-2 border-t border-border">
                   <label className="text-sm font-medium text-primary block">سفارشی‌سازی‌های عمومی</label>
