@@ -46,15 +46,6 @@ const App: React.FC = () => {
   const { currentUser, login, logout, hydrateFromCloud, isHydrating } = useShoppingStore();
   useTheme();
 
-  // Session timeout: 30 minutes with 5 minute warning
-  useSessionTimeout({
-    timeoutMinutes: 30,
-    warningMinutes: 5,
-    onTimeout: () => {
-      setView('dashboard');
-    },
-  });
-
   useEffect(() => {
     if (currentUser) {
       hydrateFromCloud();
@@ -181,19 +172,46 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <ToastProvider>
-        <PageActionsProvider>
-          <div className="min-h-screen bg-background text-primary font-sans flex flex-col md:flex-row transition-all">
-            <AppContent
-              view={view}
-              onNavigate={handleNavigate}
-              onLogout={handleLogout}
-              renderView={renderView}
-            />
-            <OfflineIndicator />
-          </div>
-        </PageActionsProvider>
+        <AppWithSessionTimeout
+          view={view}
+          onNavigate={handleNavigate}
+          onLogout={handleLogout}
+          renderView={renderView}
+        />
       </ToastProvider>
     </ErrorBoundary>
+  );
+};
+
+// Component that uses useSessionTimeout - must be inside ToastProvider
+const AppWithSessionTimeout: React.FC<{
+  view: View;
+  onNavigate: (view: View) => void;
+  onLogout: () => void;
+  renderView: () => React.ReactNode;
+}> = ({ view, onNavigate, onLogout, renderView }) => {
+  // Session timeout: 30 minutes with 5 minute warning
+  // This hook uses useToast, so it must be inside ToastProvider
+  useSessionTimeout({
+    timeoutMinutes: 30,
+    warningMinutes: 5,
+    onTimeout: () => {
+      onNavigate('dashboard');
+    },
+  });
+
+  return (
+    <PageActionsProvider>
+      <div className="min-h-screen bg-background text-primary font-sans flex flex-col md:flex-row transition-all">
+        <AppContent
+          view={view}
+          onNavigate={onNavigate}
+          onLogout={onLogout}
+          renderView={renderView}
+        />
+        <OfflineIndicator />
+      </div>
+    </PageActionsProvider>
   );
 };
 
