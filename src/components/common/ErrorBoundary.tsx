@@ -1,17 +1,42 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Component, ErrorInfo, ReactNode } from 'react';
 import Card from './Card';
+import { logger } from '../../utils/logger';
 
+/**
+ * Props for the ErrorBoundary component
+ */
 interface Props {
+  /** Child components to render */
   children: ReactNode;
+  /** Custom fallback UI to display when an error occurs */
   fallback?: ReactNode;
 }
 
+/**
+ * Internal state of the ErrorBoundary component
+ */
 interface State {
+  /** Whether an error has been caught */
   hasError: boolean;
+  /** The error that was caught */
   error: Error | null;
+  /** Additional error information from React */
   errorInfo: ErrorInfo | null;
 }
 
+/**
+ * ErrorBoundary component that catches JavaScript errors in child components
+ *
+ * This component implements React's error boundary pattern to catch errors
+ * during rendering, in lifecycle methods, and in constructors of the whole tree below them.
+ *
+ * @example
+ * ```tsx
+ * <ErrorBoundary fallback={<CustomErrorUI />}>
+ *   <MyComponent />
+ * </ErrorBoundary>
+ * ```
+ */
 class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -31,7 +56,8 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    // Log error using logger utility
+    logger.error('ErrorBoundary caught an error:', error, errorInfo);
     this.setState({
       error,
       errorInfo,

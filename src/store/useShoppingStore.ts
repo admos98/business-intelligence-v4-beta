@@ -1,12 +1,13 @@
 // src/store/useShoppingStore.ts
 
 import { create } from 'zustand';
-import { ShoppingList, ShoppingItem, CafeCategory, Vendor, OcrResult, Unit, ItemStatus, PaymentStatus, PaymentMethod, PendingPaymentItem, SmartSuggestion, SummaryData, RecentPurchaseItem, MasterItem, AuthSlice, ShoppingState, InflationData, InflationDetail, InflationPoint, POSItem, SellTransaction, Recipe, StockEntry, SellSummaryData, FinancialOverviewData, AuditLogEntry, Shift } from '../../shared/types.ts';
-import { t } from '../../shared/translations.ts';
-import { parseJalaliDate, toJalaliDateString, gregorianToJalali } from '../../shared/jalali.ts';
-import { fetchData, saveData } from '../lib/api.ts';
-import { defaultUsers } from '../config/auth.ts';
-import { findFuzzyMatches, calculateSimilarity } from '../lib/fuzzyMatch.ts';
+import { logger } from '../utils/logger';
+import { ShoppingList, ShoppingItem, CafeCategory, Vendor, OcrResult, Unit, ItemStatus, PaymentStatus, PaymentMethod, PendingPaymentItem, SmartSuggestion, SummaryData, RecentPurchaseItem, MasterItem, User, AuthSlice, ShoppingState, InflationData, InflationDetail, InflationPoint, POSItem, SellTransaction, Recipe, StockEntry, SellSummaryData, FinancialOverviewData, AuditLogEntry, Shift, Account, AccountType, JournalEntry, GeneralLedgerEntry, TrialBalanceEntry, BalanceSheetData, IncomeStatementData, CashFlowStatementData, TaxSettings, TaxRate, TaxReportData, Customer, Invoice, InvoiceStatus, InvoiceType, Payment, AgingReportData, AgingBucket } from '../../shared/types';
+import { t } from '../../shared/translations';
+import { parseJalaliDate, toJalaliDateString, gregorianToJalali } from '../../shared/jalali';
+import { fetchData, saveData } from '../lib/api';
+import { defaultUsers } from '../config/auth';
+import { findFuzzyMatches } from '../lib/fuzzyMatch';
 
 type SummaryPeriod = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
 
@@ -26,11 +27,29 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   auditLog: AuditLogEntry[]; // Audit trail for critical operations
   shifts: Shift[]; // Shift management
 
+  // ACCOUNTING DATA (PHASE 1)
+  accounts: Account[]; // Chart of Accounts
+  journalEntries: JournalEntry[]; // All journal entries
+
+  // TAX DATA (PHASE 3)
+  taxSettings: TaxSettings; // Global tax configuration
+  taxRates: TaxRate[]; // Available tax rates
+
+  // CUSTOMER & INVOICE DATA (PHASE 4)
+  customers: Customer[]; // Customer database
+  invoices: Invoice[]; // All invoices (AR & AP)
+  payments: Payment[]; // Payment records
+
   // Category actions
   addCategory: (name: string) => void;
   addPOSCategory: (name: string) => void; // Add POS-specific category
 
   hydrateFromCloud: () => Promise<void>;
+
+  // User Management
+  addUser: (user: Omit<User, 'id'>) => string;
+  updateUser: (userId: string, updates: Partial<User>) => void;
+  deleteUser: (userId: string) => void;
 
   // List Actions
   createList: (date: Date) => string;
@@ -111,6 +130,64 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   endShift: (endingCash: number, notes?: string) => void;
   getActiveShift: () => Shift | null;
   getShiftTransactions: (shiftId: string) => SellTransaction[];
+
+  // ACCOUNTING ACTIONS (PHASE 1)
+  addAccount: (account: Omit<Account, 'id' | 'createdAt'>) => string;
+  updateAccount: (accountId: string, updates: Partial<Account>) => void;
+  deleteAccount: (accountId: string) => void;
+  getAccountById: (accountId: string) => Account | undefined;
+  getAccountByCode: (code: string) => Account | undefined;
+  getAccountsByType: (type: AccountType) => Account[];
+
+  // TAX ACTIONS (PHASE 3)
+  updateTaxSettings: (settings: Partial<TaxSettings>) => void;
+  addTaxRate: (taxRate: Omit<TaxRate, 'id' | 'createdAt'>) => string;
+  updateTaxRate: (taxRateId: string, updates: Partial<TaxRate>) => void;
+  deleteTaxRate: (taxRateId: string) => void;
+  getTaxRateById: (taxRateId: string) => TaxRate | undefined;
+  getDefaultTaxRate: () => TaxRate | undefined;
+  calculateTaxForAmount: (amount: number, taxRateId?: string) => { taxAmount: number; taxRate: number; total: number };
+
+  // Journal Entry Actions
+  createJournalEntry: (entry: Omit<JournalEntry, 'id' | 'createdAt'>) => string;
+  getJournalEntriesByReference: (reference: string) => JournalEntry[];
+  reverseJournalEntry: (entryId: string, reason: string) => string;
+
+  // Computed Accounting Functions
+  getAccountBalance: (accountId: string, asOfDate?: Date) => number;
+  getGeneralLedger: (accountId?: string, startDate?: Date, endDate?: Date) => GeneralLedgerEntry[];
+  getTrialBalance: (asOfDate?: Date) => { entries: TrialBalanceEntry[], totalDebit: number, totalCredit: number, balanced: boolean };
+  initializeDefaultAccounts: () => void;
+
+  // Financial Statements (Phase 2)
+  getBalanceSheet: (asOfDate?: Date) => BalanceSheetData;
+  getIncomeStatement: (startDate?: Date, endDate?: Date) => IncomeStatementData;
+  getCashFlowStatement: (startDate?: Date, endDate?: Date) => CashFlowStatementData;
+  getTaxReport: (startDate?: Date, endDate?: Date) => TaxReportData;
+
+  // CUSTOMER & INVOICE ACTIONS (PHASE 4)
+  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'balance'>) => string;
+  updateCustomer: (customerId: string, updates: Partial<Customer>) => void;
+  deleteCustomer: (customerId: string) => void;
+  getCustomerById: (customerId: string) => Customer | undefined;
+  getCustomerBalance: (customerId: string) => number;
+
+  createInvoice: (invoice: Omit<Invoice, 'id' | 'createdAt' | 'updatedAt' | 'paidAmount' | 'status'>) => string;
+  updateInvoice: (invoiceId: string, updates: Partial<Invoice>) => void;
+  deleteInvoice: (invoiceId: string) => void;
+  getInvoiceById: (invoiceId: string) => Invoice | undefined;
+  getInvoicesByCustomer: (customerId: string) => Invoice[];
+  getInvoicesByVendor: (vendorId: string) => Invoice[];
+  getOverdueInvoices: (type: 'receivable' | 'payable') => Invoice[];
+
+  recordPayment: (payment: Omit<Payment, 'id' | 'createdAt'>) => string;
+  getPaymentsByInvoice: (invoiceId: string) => Payment[];
+
+  getAgingReport: (type: 'receivable' | 'payable', asOfDate?: Date) => AgingReportData;
+
+  // Internal helper functions
+  _createInvoiceJournalEntry: (invoice: Invoice) => void;
+  _createPaymentJournalEntry: (payment: Payment, invoice: Invoice) => void;
 }
 
 const DEFAULT_CATEGORIES: string[] = Object.values(CafeCategory);
@@ -138,7 +215,29 @@ const emptyState = {
   stockEntries: {},
   auditLog: [],
   shifts: [],
+  accounts: [], // Chart of Accounts
+  journalEntries: [], // Journal Entries
+  taxSettings: { // Tax Settings (Phase 3)
+    enabled: false,
+    includeTaxInPrice: false,
+    showTaxOnReceipts: true,
+  },
+  taxRates: [], // Tax Rates (Phase 3)
+  customers: [], // Customers (Phase 4)
+  invoices: [], // Invoices (Phase 4)
+  payments: [], // Payments (Phase 4)
 };
+
+// --- Helper function to safely calculate price per unit ---
+const calculatePricePerUnit = (totalPrice: number | null | undefined, quantity: number | null | undefined): number | undefined => {
+  if (!totalPrice || !quantity || quantity <= 0 || !Number.isFinite(totalPrice) || !Number.isFinite(quantity)) {
+    return undefined;
+  }
+  // Round to 2 decimal places for currency precision
+  return Math.round((totalPrice / quantity) * 100) / 100;
+};
+
+// Note: Currency rounding helper removed - using calculatePricePerUnit for consistency
 
 // --- Helper function to add audit log entry ---
 const addAuditLogEntry = (
@@ -159,33 +258,225 @@ const addAuditLogEntry = (
   return { auditLog: newLog };
 };
 
+// --- Helper function to create default Chart of Accounts ---
+const createDefaultChartOfAccounts = (): Account[] => {
+  const now = new Date().toISOString();
+  return [
+    // ASSETS (1xxx)
+    {
+      id: 'acc-1-101',
+      code: '1-101',
+      name: t.cash,
+      nameEn: 'Cash',
+      type: AccountType.Asset,
+      balance: 0,
+      isActive: true,
+      description: 'صندوق نقدی',
+      createdAt: now,
+    },
+    {
+      id: 'acc-1-102',
+      code: '1-102',
+      name: t.bank,
+      nameEn: 'Bank',
+      type: AccountType.Asset,
+      balance: 0,
+      isActive: true,
+      description: 'حساب بانکی',
+      createdAt: now,
+    },
+    {
+      id: 'acc-1-201',
+      code: '1-201',
+      name: t.inventory,
+      nameEn: 'Inventory',
+      type: AccountType.Asset,
+      balance: 0,
+      isActive: true,
+      description: 'موجودی کالا و مواد اولیه',
+      createdAt: now,
+    },
+    {
+      id: 'acc-1-301',
+      code: '1-301',
+      name: t.accountsReceivable,
+      nameEn: 'Accounts Receivable',
+      type: AccountType.Asset,
+      balance: 0,
+      isActive: true,
+      description: 'طلب از مشتریان',
+      createdAt: now,
+    },
+
+    // LIABILITIES (2xxx)
+    {
+      id: 'acc-2-101',
+      code: '2-101',
+      name: t.accountsPayable,
+      nameEn: 'Accounts Payable',
+      type: AccountType.Liability,
+      balance: 0,
+      isActive: true,
+      description: 'بدهی به تامین‌کنندگان',
+      createdAt: now,
+    },
+    {
+      id: 'acc-2-201',
+      code: '2-201',
+      name: t.taxPayable,
+      nameEn: 'Tax Payable',
+      type: AccountType.Liability,
+      balance: 0,
+      isActive: true,
+      description: 'مالیات قابل پرداخت',
+      createdAt: now,
+    },
+
+    // EQUITY (3xxx)
+    {
+      id: 'acc-3-101',
+      code: '3-101',
+      name: t.capital,
+      nameEn: 'Capital',
+      type: AccountType.Equity,
+      balance: 0,
+      isActive: true,
+      description: 'سرمایه اولیه',
+      createdAt: now,
+    },
+    {
+      id: 'acc-3-201',
+      code: '3-201',
+      name: t.retainedEarnings,
+      nameEn: 'Retained Earnings',
+      type: AccountType.Equity,
+      balance: 0,
+      isActive: true,
+      description: 'سود (زیان) انباشته',
+      createdAt: now,
+    },
+
+    // REVENUE (4xxx)
+    {
+      id: 'acc-4-101',
+      code: '4-101',
+      name: t.salesRevenue,
+      nameEn: 'Sales Revenue',
+      type: AccountType.Revenue,
+      balance: 0,
+      isActive: true,
+      description: 'درآمد حاصل از فروش',
+      createdAt: now,
+    },
+
+    // COGS (5xxx)
+    {
+      id: 'acc-5-101',
+      code: '5-101',
+      name: t.costOfGoodsSold,
+      nameEn: 'Cost of Goods Sold',
+      type: AccountType.COGS,
+      balance: 0,
+      isActive: true,
+      description: 'بهای تمام شده کالای فروخته شده',
+      createdAt: now,
+    },
+
+    // EXPENSES (6xxx)
+    {
+      id: 'acc-6-101',
+      code: '6-101',
+      name: 'هزینه حقوق و دستمزد',
+      nameEn: 'Payroll Expense',
+      type: AccountType.Expense,
+      balance: 0,
+      isActive: true,
+      description: 'هزینه حقوق و مزایای پرسنل',
+      createdAt: now,
+    },
+    {
+      id: 'acc-6-201',
+      code: '6-201',
+      name: 'هزینه اجاره',
+      nameEn: 'Rent Expense',
+      type: AccountType.Expense,
+      balance: 0,
+      isActive: true,
+      description: 'هزینه اجاره محل',
+      createdAt: now,
+    },
+    {
+      id: 'acc-6-301',
+      code: '6-301',
+      name: 'هزینه برق و آب و گاز',
+      nameEn: 'Utilities Expense',
+      type: AccountType.Expense,
+      balance: 0,
+      isActive: true,
+      description: 'هزینه‌های برق، آب و گاز',
+      createdAt: now,
+    },
+  ];
+};
+
 // --- Debounced save function ---
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-const debouncedSaveData = (state: FullShoppingState) => {
+let scheduledUserId: string | null = null; // Track user ID when save is scheduled
+
+const clearDebounceTimer = () => {
+    if (debounceTimer !== null) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+    }
+    scheduledUserId = null;
+};
+
+const debouncedSaveData = (getState: () => FullShoppingState) => {
     if (typeof window === 'undefined') {
         return;
     }
+
+    // Capture current user ID at the time save is scheduled
+    const currentState = getState();
+    const userIdAtSchedule = currentState.currentUser?.username || null;
+    scheduledUserId = userIdAtSchedule;
+
     if (debounceTimer !== null) {
         clearTimeout(debounceTimer);
     }
+
     debounceTimer = setTimeout(() => {
-        const { currentUser, isHydrating } = state;
-        // Do not save if no user or during initial hydration.
-        if (!currentUser || isHydrating) {
+        // Get fresh state at execution time
+        const freshState = getState();
+        const { currentUser, isHydrating } = freshState;
+
+        // Do not save if no user, during hydration, or if user changed (logged out)
+        if (!currentUser || isHydrating || currentUser.username !== userIdAtSchedule || scheduledUserId !== userIdAtSchedule) {
+            if (currentUser?.username !== userIdAtSchedule || scheduledUserId !== userIdAtSchedule) {
+                logger.warn('Save cancelled: User changed during debounce period');
+            }
+            scheduledUserId = null;
             return;
         }
 
         const dataToSave = {
-            lists: state.lists,
-            customCategories: state.customCategories,
-            vendors: state.vendors,
-            categoryVendorMap: state.categoryVendorMap,
-            itemInfoMap: state.itemInfoMap,
-            posItems: state.posItems,
-            posCategories: state.posCategories,
-            sellTransactions: state.sellTransactions,
-            recipes: state.recipes,
-            stockEntries: state.stockEntries,
+            lists: freshState.lists,
+            customCategories: freshState.customCategories,
+            vendors: freshState.vendors,
+            categoryVendorMap: freshState.categoryVendorMap,
+            itemInfoMap: freshState.itemInfoMap,
+            posItems: freshState.posItems,
+            posCategories: freshState.posCategories,
+            sellTransactions: freshState.sellTransactions,
+            recipes: freshState.recipes,
+            stockEntries: freshState.stockEntries,
+            accounts: freshState.accounts,
+            journalEntries: freshState.journalEntries,
+            taxSettings: freshState.taxSettings,
+            taxRates: freshState.taxRates,
+            customers: freshState.customers,
+            invoices: freshState.invoices,
+            payments: freshState.payments,
         };
         saveData(dataToSave).catch((err: unknown) => {
             const errorMessage = err instanceof Error ? err.message : "Auto-save failed";
@@ -195,7 +486,7 @@ const debouncedSaveData = (state: FullShoppingState) => {
                 stack: err.stack
             } : { message: errorMessage };
 
-            console.error("Auto-save failed:", errorDetails);
+            logger.error("Auto-save failed:", errorDetails);
 
             // Retry logic for transient network errors
             const isNetworkError = errorMessage.includes('Failed to fetch') ||
@@ -205,18 +496,19 @@ const debouncedSaveData = (state: FullShoppingState) => {
             if (isNetworkError) {
                 // Retry once after 3 seconds for network errors
                 setTimeout(() => {
-                    console.log("Retrying auto-save after network error...");
+                    logger.info("Retrying auto-save after network error...");
                     saveData(dataToSave).catch((retryErr: unknown) => {
                         const retryMessage = retryErr instanceof Error ? retryErr.message : "Retry failed";
-                        console.error("Auto-save retry also failed:", retryMessage);
-                        // TODO: Consider showing a toast notification to the user here
-                        // This would require passing a callback or using a global event system
+                        logger.error("Auto-save retry also failed:", retryMessage);
+                        // Note: Toast notifications should be handled at the component level
+                        // Components using the store can listen to state changes and show toasts accordingly
                     });
                 }, 3000);
             } else {
                 // For non-network errors (validation, auth, etc.), log but don't retry
-                console.error("Auto-save failed with non-retryable error:", errorMessage);
-                // TODO: Show user notification for critical errors (auth failures, etc.)
+                logger.error("Auto-save failed with non-retryable error:", errorMessage);
+                // Note: Critical error notifications should be handled at the component level
+                // Components can listen to store state changes or use error boundaries
             }
         });
     }, 1500); // Debounce for 1.5 seconds
@@ -231,24 +523,29 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
       users: defaultUsers,
       currentUser: null,
       login: async (username, password) => {
-        const user = get().users.find(u => u.username.toLowerCase() === username.toLowerCase());
+        const user = get().users.find((u: User) => u.username.toLowerCase() === username.toLowerCase());
         if (!user) {
             return false;
         }
 
         try {
+            if (!user.salt || !user.passwordHash) {
+                return false;
+            }
             const hashedInput = await hashPassword(password, user.salt);
             if (hashedInput === user.passwordHash) {
                 set({ currentUser: user, isHydrating: true });
                 return true;
             }
         } catch (error) {
-            console.error("Login failed due to hashing error:", error);
+            logger.error("Login failed due to hashing error:", error);
         }
 
         return false;
       },
       logout: () => {
+        // Clear any pending saves before logging out
+        clearDebounceTimer();
         set({ currentUser: null, ...emptyState, isHydrating: false });
       },
 
@@ -272,6 +569,11 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                       }
                   }
 
+                  // Initialize default accounts if none exist
+                  const accounts = Array.isArray(data.accounts) && data.accounts.length > 0
+                    ? data.accounts as Account[]
+                    : createDefaultChartOfAccounts();
+
                   const hydratedState: Partial<FullShoppingState> = {
                       lists: data.lists,
                       customCategories: data.customCategories,
@@ -283,6 +585,13 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                       sellTransactions: data.sellTransactions || [],
                       recipes: data.recipes || [],
                       stockEntries: data.stockEntries || {},
+                      accounts: accounts,
+                      journalEntries: (data.journalEntries as JournalEntry[]) || [],
+                      taxSettings: data.taxSettings || emptyState.taxSettings,
+                      taxRates: (data.taxRates as TaxRate[]) || [],
+                      customers: (data.customers as Customer[]) || [],
+                      invoices: (data.invoices as Invoice[]) || [],
+                      payments: (data.payments as Payment[]) || [],
                       isHydrating: false,
                   };
                   set(hydratedState);
@@ -290,7 +599,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                   set({ ...emptyState, isHydrating: false });
               }
           } catch (error) {
-              console.error("Failed to hydrate from cloud:", error);
+              logger.error("Failed to hydrate from cloud:", error);
               set({ ...emptyState, isHydrating: false }); // Fallback to empty state on error
           }
       },
@@ -311,7 +620,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           items: [],
         };
         set((state) => ({ lists: [...state.lists, newList] }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
         return newList.id;
       },
 
@@ -319,15 +628,21 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         set((state) => ({
           lists: state.lists.map((list) => (list.id === listId ? updatedList : list)),
         }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       deleteList: (listId) => {
         set((state) => ({ lists: state.lists.filter((list) => list.id !== listId) }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       updateItem: (listId, itemId, updates) => {
+        // Find the item before updating to check if status changed to Bought
+        const list = get().lists.find(l => l.id === listId);
+        const oldItem = list?.items.find(i => i.id === itemId);
+        const wasPending = oldItem?.status === ItemStatus.Pending;
+        const nowBought = updates.status === ItemStatus.Bought;
+
         set(state => ({
             lists: state.lists.map(list => {
                 if (list.id === listId) {
@@ -339,7 +654,88 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 return list;
             })
         }));
-        debouncedSaveData(get());
+
+        // Update stock if item just became bought with purchased amount
+        if (wasPending && nowBought && oldItem && updates.purchasedAmount !== undefined && updates.purchasedAmount > 0) {
+          get().updateStock(oldItem.name, oldItem.unit, updates.purchasedAmount);
+        }
+
+        // Create journal entry if item just became bought
+        if (wasPending && nowBought && oldItem && updates.paidPrice) {
+          try {
+            const cashAccount = get().getAccountByCode('1-101');
+            const bankAccount = get().getAccountByCode('1-102');
+            const inventoryAccount = get().getAccountByCode('1-201');
+            const apAccount = get().getAccountByCode('2-101');
+
+            if (inventoryAccount) {
+              const journalEntries: Array<{accountId: string, debit: number, credit: number, description?: string}> = [];
+
+              // Debit Inventory
+              journalEntries.push({
+                accountId: inventoryAccount.id,
+                debit: updates.paidPrice,
+                credit: 0,
+                description: `خرید ${oldItem.name}`
+              });
+
+              // Credit Cash/Bank or AP depending on payment status
+              if (updates.paymentStatus === PaymentStatus.Paid) {
+                const paymentAccount = updates.paymentMethod === PaymentMethod.Cash ? cashAccount : bankAccount;
+                if (paymentAccount) {
+                  journalEntries.push({
+                    accountId: paymentAccount.id,
+                    debit: 0,
+                    credit: updates.paidPrice,
+                    description: updates.paymentMethod === PaymentMethod.Cash ? 'پرداخت نقدی' : 'پرداخت بانکی'
+                  });
+                }
+              } else if (apAccount) {
+                // Payment due - credit Accounts Payable
+                journalEntries.push({
+                  accountId: apAccount.id,
+                  debit: 0,
+                  credit: updates.paidPrice,
+                  description: 'بدهی به تامین‌کننده'
+                });
+              }
+
+              if (journalEntries.length === 2) {
+                get().createJournalEntry({
+                  date: list?.createdAt || new Date().toISOString(),
+                  description: `خرید: ${oldItem.name}`,
+                  reference: itemId,
+                  referenceType: 'purchase',
+                  entries: journalEntries,
+                  isAutomatic: true,
+                  createdBy: get().currentUser?.username,
+                });
+              }
+            }
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            logger.error('Failed to create journal entry for purchase:', error);
+
+            // Log failure to audit trail for manual reconciliation
+            const auditEntry = addAuditLogEntry(get(), 'transaction_updated', {
+              entityId: itemId,
+              entityName: oldItem.name,
+              metadata: {
+                action: 'journal_entry_failed',
+                reason: errorMessage,
+                purchaseAmount: updates.paidPrice,
+                listId: listId,
+                requiresManualReconciliation: true
+              }
+            });
+            set(auditEntry);
+
+            // Still save the purchase to prevent data loss, but flag for review
+            debouncedSaveData(get);
+          }
+        }
+
+        debouncedSaveData(get);
       },
 
       addItemFromSuggestion: ({ name, unit, category }) => {
@@ -359,9 +755,11 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
             name,
             amount: latestInfo.lastAmount || 1,
+            quantity: latestInfo.lastAmount || 1,
             unit,
             category,
             status: ItemStatus.Pending,
+            paymentStatus: PaymentStatus.Due,
             estimatedPrice: latestInfo.pricePerUnit ? latestInfo.pricePerUnit * (latestInfo.lastAmount || 1) : undefined
         };
 
@@ -373,9 +771,14 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const { date, items: ocrItems } = ocrResult;
         const vendorId = get().findOrCreateVendor(vendorName);
 
+        if (!date) {
+            logger.error("OCR date is missing");
+            return 'Invalid Date';
+        }
+
         const parsedDate = parseJalaliDate(date);
         if (!parsedDate) {
-            console.error("Invalid OCR date, cannot create list:", date);
+            logger.error("Invalid OCR date, cannot create list:", date);
             return 'Invalid Date';
         }
 
@@ -387,6 +790,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             id: `item-${baseTimestamp}-${index}-${Math.random().toString(36).substr(2, 5)}`,
             name: item.name,
             amount: item.quantity,
+            quantity: item.quantity,
             unit: item.unit || Unit.Piece,
             status: ItemStatus.Bought,
             category: item.suggestedCategory || t.other,
@@ -402,10 +806,90 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             if(item.category && vendorId) {
                 get().updateCategoryVendorMap(item.category, vendorId);
             }
+            // Update stock when items are purchased via OCR
+            if (item.purchasedAmount !== undefined && item.purchasedAmount > 0) {
+              get().updateStock(item.name, item.unit, item.purchasedAmount);
+            }
         });
 
         const updatedList = { ...targetList, items: [...targetList.items, ...newShoppingItems] };
         get().updateList(targetListId, updatedList);
+
+        // Create journal entry for the batch purchase
+        try {
+          const totalPurchase = newShoppingItems.reduce((sum, item) => sum + (item.paidPrice || 0), 0);
+          if (totalPurchase > 0) {
+            const cashAccount = get().getAccountByCode('1-101');
+            const bankAccount = get().getAccountByCode('1-102');
+            const inventoryAccount = get().getAccountByCode('1-201');
+            const apAccount = get().getAccountByCode('2-101');
+
+            if (inventoryAccount) {
+              const journalEntries: Array<{accountId: string, debit: number, credit: number, description?: string}> = [];
+
+              // Debit Inventory
+              journalEntries.push({
+                accountId: inventoryAccount.id,
+                debit: totalPurchase,
+                credit: 0,
+                description: `خرید ${newShoppingItems.length} قلم`
+              });
+
+              // Credit Cash/Bank or AP
+              if (paymentStatus === PaymentStatus.Paid) {
+                const paymentAccount = paymentMethod === PaymentMethod.Cash ? cashAccount : bankAccount;
+                if (paymentAccount) {
+                  journalEntries.push({
+                    accountId: paymentAccount.id,
+                    debit: 0,
+                    credit: totalPurchase,
+                    description: paymentMethod === PaymentMethod.Cash ? 'پرداخت نقدی' : 'پرداخت بانکی'
+                  });
+                }
+              } else if (apAccount) {
+                journalEntries.push({
+                  accountId: apAccount.id,
+                  debit: 0,
+                  credit: totalPurchase,
+                  description: `بدهی به ${vendorName || 'تامین‌کننده'}`
+                });
+              }
+
+              if (journalEntries.length === 2) {
+                get().createJournalEntry({
+                  date: targetList.createdAt,
+                  description: `خرید از ${vendorName || 'تامین‌کننده'} - ${newShoppingItems.length} قلم`,
+                  reference: targetListId,
+                  referenceType: 'purchase',
+                  entries: journalEntries,
+                  isAutomatic: true,
+                  createdBy: get().currentUser?.username,
+                });
+              }
+            }
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logger.error('Failed to create journal entry for OCR purchase:', error);
+
+          // Log failure to audit trail for manual reconciliation
+          const totalPurchase = newShoppingItems.reduce((sum, item) => sum + (item.paidPrice || 0), 0);
+          const auditEntry = addAuditLogEntry(get(), 'transaction_created', {
+            entityId: targetListId,
+            entityName: `OCR Purchase - ${vendorName || 'Unknown Vendor'}`,
+            metadata: {
+              action: 'journal_entry_failed',
+              reason: errorMessage,
+              purchaseAmount: totalPurchase,
+              itemCount: newShoppingItems.length,
+              requiresManualReconciliation: true
+            }
+          });
+          set(auditEntry);
+
+          // Still save the purchase to prevent data loss, but flag for review
+          debouncedSaveData(get);
+        }
 
         return targetList.name;
       },
@@ -416,7 +900,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             ...vendorData
         };
         set(state => ({ vendors: [...state.vendors, newVendor] }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
         return newVendor.id;
       },
 
@@ -424,7 +908,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         set(state => ({
             vendors: state.vendors.map(v => v.id === vendorId ? { ...v, ...updates } : v)
         }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       deleteVendor: (vendorId) => {
@@ -442,7 +926,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 categoryVendorMap: updatedCategoryVendorMap,
             };
         });
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       findOrCreateVendor: (vendorName) => {
@@ -462,7 +946,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 [category]: vendorId
             }
         }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       addCategory: (name: string) => {
@@ -472,7 +956,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           if (state.customCategories.includes(trimmed)) return {} as Partial<FullShoppingState>;
           return { customCategories: [...state.customCategories, trimmed] } as Partial<FullShoppingState>;
         });
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       addPOSCategory: (name: string) => {
@@ -482,7 +966,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           if (state.posCategories.includes(trimmed)) return {} as Partial<FullShoppingState>;
           return { posCategories: [...state.posCategories, trimmed] } as Partial<FullShoppingState>;
         });
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       updateMasterItem: (originalName, originalUnit, updates) => {
@@ -510,7 +994,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
               return { lists: newLists, itemInfoMap: newItemInfoMap };
           });
-          debouncedSaveData(get());
+          debouncedSaveData(get);
       },
 
       addCustomData: (item) => {
@@ -534,7 +1018,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
         if(stateChanged) {
             set(stateUpdates);
-            debouncedSaveData(get());
+            debouncedSaveData(get);
         }
       },
 
@@ -577,13 +1061,14 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 };
             }
 
-            currentStats.totalQuantity += item.purchasedAmount || 0;
-            currentStats.totalSpend += item.paidPrice || 0;
+            currentStats.totalQuantity = (currentStats.totalQuantity || 0) + (item.purchasedAmount || 0);
+            currentStats.totalSpend = (currentStats.totalSpend || 0) + (item.paidPrice || 0);
             currentStats.purchaseCount++;
 
             if (item.purchaseDate >= currentStats.latestPurchaseDate) {
                 currentStats.latestPurchaseDate = item.purchaseDate;
-                currentStats.lastPricePerUnit = (item.paidPrice || 0) / (item.purchasedAmount || 1);
+                const pricePerUnit = calculatePricePerUnit(item.paidPrice, item.purchasedAmount);
+                currentStats.lastPricePerUnit = pricePerUnit || 0;
                 currentStats.category = item.category;
             }
 
@@ -600,11 +1085,22 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         return result.sort((a,b) => a.name.localeCompare(b.name, 'fa'));
       },
       getItemInfo: (name: string) => {
-        // Try direct lookup first (for backward compatibility)
+        // Always use composite keys (name-unit) for consistency
+        // Try all possible units to find a match
+        const allUnits = Object.values(Unit);
+        for (const unit of allUnits) {
+          const compositeKey = `${name}-${unit}`;
+          const value = get().itemInfoMap[compositeKey];
+          if (value) {
+            return value;
+          }
+        }
+
+        // Fallback: Try direct lookup for backward compatibility with old data
         const direct = get().itemInfoMap[name];
         if (direct) return direct;
 
-        // Try composite keys (name-unit) for all units
+        // Try any key that starts with the name (legacy support)
         for (const [key, value] of Object.entries(get().itemInfoMap)) {
           if (key.startsWith(`${name}-`)) {
             return value;
@@ -626,11 +1122,14 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           if (allPurchasesOfItem.length > 0) {
               const latest = allPurchasesOfItem[0];
               if (latest.paidPrice && latest.purchasedAmount && latest.purchasedAmount > 0) {
-                  return {
-                      pricePerUnit: latest.paidPrice / latest.purchasedAmount,
-                      vendorId: latest.vendorId,
-                      lastAmount: latest.purchasedAmount
-                  };
+                  const pricePerUnit = calculatePricePerUnit(latest.paidPrice, latest.purchasedAmount);
+                  if (pricePerUnit !== undefined) {
+                    return {
+                        pricePerUnit,
+                        vendorId: latest.vendorId,
+                        lastAmount: latest.purchasedAmount
+                    };
+                  }
               }
           }
           return {};
@@ -647,10 +1146,13 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                       item.purchasedAmount != null &&
                       item.purchasedAmount > 0
                   ) {
-                      history.push({
-                          date: list.createdAt,
-                          pricePerUnit: item.paidPrice / item.purchasedAmount,
-                      });
+                      const pricePerUnit = calculatePricePerUnit(item.paidPrice, item.purchasedAmount);
+                      if (pricePerUnit !== undefined) {
+                        history.push({
+                            date: list.createdAt,
+                            pricePerUnit,
+                        });
+                      }
                   }
               });
           });
@@ -672,21 +1174,23 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                       item.purchasedAmount != null &&
                       item.purchasedAmount > 0
                   ) {
-                      const pricePerUnit = item.paidPrice / item.purchasedAmount;
-                      const existing = vendorPrices.get(item.vendorId);
-                      if (existing) {
-                          // Average price weighted by purchase count
-                          const totalCount = existing.purchaseCount + 1;
-                          const avgPrice = ((existing.pricePerUnit * existing.purchaseCount) + pricePerUnit) / totalCount;
-                          vendorPrices.set(item.vendorId, {
-                              pricePerUnit: avgPrice,
-                              purchaseCount: totalCount
-                          });
-                      } else {
-                          vendorPrices.set(item.vendorId, {
-                              pricePerUnit,
-                              purchaseCount: 1
-                          });
+                      const pricePerUnit = calculatePricePerUnit(item.paidPrice, item.purchasedAmount);
+                      if (pricePerUnit !== undefined) {
+                        const existing = vendorPrices.get(item.vendorId);
+                        if (existing) {
+                            // Average price weighted by purchase count
+                            const totalCount = existing.purchaseCount + 1;
+                            const avgPrice = ((existing.pricePerUnit * existing.purchaseCount) + pricePerUnit) / totalCount;
+                            vendorPrices.set(item.vendorId, {
+                                pricePerUnit: avgPrice,
+                                purchaseCount: totalCount
+                            });
+                        } else {
+                            vendorPrices.set(item.vendorId, {
+                                pricePerUnit,
+                                purchaseCount: 1
+                            });
+                        }
                       }
                   }
               });
@@ -720,14 +1224,17 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                       item.purchasedAmount > 0
                   ) {
                       const vendor = item.vendorId ? vendors.find(v => v.id === item.vendorId) : undefined;
-                      purchases.push({
-                          date: listDate,
-                          vendorId: item.vendorId,
-                          vendorName: vendor?.name,
-                          pricePerUnit: item.paidPrice / item.purchasedAmount,
-                          amount: item.purchasedAmount,
-                          totalPrice: item.paidPrice
-                      });
+                      const pricePerUnit = calculatePricePerUnit(item.paidPrice, item.purchasedAmount);
+                      if (pricePerUnit !== undefined) {
+                        purchases.push({
+                            date: listDate,
+                            vendorId: item.vendorId,
+                            vendorName: vendor?.name,
+                            pricePerUnit,
+                            amount: item.purchasedAmount,
+                            totalPrice: item.paidPrice
+                        });
+                      }
                   }
               });
           });
@@ -747,14 +1254,17 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                       item.purchasedAmount != null &&
                       item.purchasedAmount > 0
                   ) {
-                      purchases.push({
-                          date: listDate,
-                          itemName: item.name,
-                          itemUnit: item.unit,
-                          pricePerUnit: item.paidPrice / item.purchasedAmount,
-                          amount: item.purchasedAmount,
-                          totalPrice: item.paidPrice
-                      });
+                      const pricePerUnit = calculatePricePerUnit(item.paidPrice, item.purchasedAmount);
+                      if (pricePerUnit !== undefined) {
+                        purchases.push({
+                            date: listDate,
+                            itemName: item.name,
+                            itemUnit: item.unit,
+                            pricePerUnit,
+                            amount: item.purchasedAmount,
+                            totalPrice: item.paidPrice
+                        });
+                      }
                   }
               });
           });
@@ -807,7 +1317,8 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 return;
             }
             const key = `${item.name}-${item.unit}`;
-            const pricePerUnit = item.paidPrice / item.purchasedAmount;
+            const pricePerUnit = calculatePricePerUnit(item.paidPrice, item.purchasedAmount);
+            if (pricePerUnit === undefined) return;
             if (!itemPrices.has(key)) {
                 itemPrices.set(key, { prices: [], category: item.category });
             }
@@ -821,11 +1332,18 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 const lastPrice = data.prices[data.prices.length - 1].price;
                 const previousPrice = data.prices[data.prices.length - 2].price;
                 if (previousPrice > 0) {
+                    const parts = nameAndUnit.split('-');
                     itemInflation.push({
-                        name: nameAndUnit.split('-')[0],
+                        itemName: parts[0],
+                        name: parts[0],
+                        unit: parts[1] as Unit,
+                        oldPrice: previousPrice,
+                        newPrice: lastPrice,
                         startPrice: previousPrice,
                         endPrice: lastPrice,
+                        percentageChange: ((lastPrice - previousPrice) / previousPrice) * 100,
                         changePercentage: ((lastPrice - previousPrice) / previousPrice) * 100,
+                        daysBetween: 0,
                     });
                 }
             }
@@ -840,7 +1358,8 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             }
             const category = item.category;
             const itemKey = `${item.name}-${item.unit}`;
-            const pricePerUnit = item.paidPrice / item.purchasedAmount;
+            const pricePerUnit = calculatePricePerUnit(item.paidPrice, item.purchasedAmount);
+            if (pricePerUnit === undefined) return;
 
             if (!categoryItemPrices.has(category)) {
                 categoryItemPrices.set(category, new Map());
@@ -890,10 +1409,16 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 const avgEndPrice = weightedEndPriceSum / totalSpendInCategory;
 
                 categoryInflation.push({
+                    itemName: categoryName,
                     name: categoryName,
+                    unit: Unit.Kg, // Default unit for categories
+                    oldPrice: avgStartPrice,
+                    newPrice: avgEndPrice,
                     startPrice: avgStartPrice,
                     endPrice: avgEndPrice,
+                    percentageChange: overallCategoryInflation,
                     changePercentage: overallCategoryInflation,
+                    daysBetween: 0,
                 });
             }
         });
@@ -914,7 +1439,10 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             const itemKey = `${item.name}-${item.unit}`;
             const monthKey = `${item.purchaseDate.getFullYear()}/${String(item.purchaseDate.getMonth() + 1).padStart(2, '0')}`;
             if (monthKey === firstMonthKey && !baseMonthPrices.has(itemKey)) {
-                baseMonthPrices.set(itemKey, item.paidPrice! / item.purchasedAmount!);
+                const basePrice = calculatePricePerUnit(item.paidPrice, item.purchasedAmount);
+                if (basePrice !== undefined) {
+                  baseMonthPrices.set(itemKey, basePrice);
+                }
             }
         });
 
@@ -925,8 +1453,9 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             const basePrice = baseMonthPrices.get(itemKey);
 
             if (basePrice) {
-                const currentPrice = item.paidPrice! / item.purchasedAmount!;
-                const priceRatio = currentPrice / basePrice;
+                const currentPrice = calculatePricePerUnit(item.paidPrice, item.purchasedAmount);
+                if (currentPrice === undefined) return;
+                const priceRatio = basePrice > 0 ? currentPrice / basePrice : 1;
                 const spend = item.paidPrice!;
 
                 if (!monthlySpending.has(jalaliMonthKey)) {
@@ -941,22 +1470,29 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         monthlySpending.forEach((data, monthKey) => {
             if (data.totalSpend > 0) {
                 priceIndexHistory.push({
+                    date: monthKey,
                     period: monthKey,
                     priceIndex: (data.weightedPriceSum / data.totalSpend) * 100,
+                    averageInflation: 0,
+                    itemCount: 0
                 });
             }
         });
-        priceIndexHistory.sort((a, b) => a.period.localeCompare(b.period));
+        priceIndexHistory.sort((a, b) => (a.period || a.date).localeCompare(b.period || b.date));
 
         // --- Overall Change & Top Rises ---
         const overallChange = priceIndexHistory.length >= 2
-            ? ((priceIndexHistory[priceIndexHistory.length - 1].priceIndex - priceIndexHistory[0].priceIndex) / priceIndexHistory[0].priceIndex) * 100
+            ? (((priceIndexHistory[priceIndexHistory.length - 1].priceIndex || 0) - (priceIndexHistory[0].priceIndex || 0)) / (priceIndexHistory[0].priceIndex || 1)) * 100
             : 0;
 
-        const topItemRises = itemInflation.filter(i => i.changePercentage > 0).sort((a, b) => b.changePercentage - a.changePercentage).slice(0, 5);
-        const topCategoryRises = categoryInflation.filter(c => c.changePercentage > 0).sort((a, b) => b.changePercentage - a.changePercentage).slice(0, 5);
+        const topItemRises = itemInflation.filter(i => (i.changePercentage || 0) > 0).sort((a, b) => (b.changePercentage || 0) - (a.changePercentage || 0)).slice(0, 5);
+        const topCategoryRises = categoryInflation.filter(c => (c.changePercentage || 0) > 0).sort((a, b) => (b.changePercentage || 0) - (a.changePercentage || 0)).slice(0, 5);
 
         return {
+            averageInflation: overallChange,
+            totalItems: itemInflation.length,
+            details: itemInflation,
+            timeline: priceIndexHistory,
             overallChange,
             priceIndexHistory,
             topItemRises,
@@ -1138,7 +1674,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         });
 
         // Add recipe-based suggestions (items consumed but never directly purchased)
-        recipeBasedConsumption.forEach((data, key) => {
+        recipeBasedConsumption.forEach((data) => {
           const consumptions = data.consumptions;
           if (consumptions.length < 3) return;
 
@@ -1165,9 +1701,11 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           }
         });
 
-        const priorityRank: Record<SmartSuggestion['priority'], number> = { high: 0, medium: 1, low: 2 };
+        const priorityRank: Record<'high' | 'medium' | 'low', number> = { high: 0, medium: 1, low: 2 };
         return suggestions.sort((a, b) => {
-          const priorityDelta = priorityRank[a.priority] - priorityRank[b.priority];
+          const aPriority = typeof a.priority === 'string' ? priorityRank[a.priority] : 3;
+          const bPriority = typeof b.priority === 'string' ? priorityRank[b.priority] : 3;
+          const priorityDelta = aPriority - bPriority;
           if (priorityDelta !== 0) return priorityDelta;
           return a.name.localeCompare(b.name, 'fa');
         });
@@ -1254,6 +1792,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         // Build comprehensive suggestions
         const suggestions: Array<{ name: string; unit: Unit; category: string; score: number; reason: string }> = [];
         const seen = new Set<string>();
+        const vendorMap = new Map(get().vendors.map(v => [v.id, v.name]));
 
         fuzzyResults.forEach(match => {
           // Find all units/categories for this item name
@@ -1282,6 +1821,15 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
               if (isRecent) reason += ' • اخیراً خریداری شده';
               if (item.purchaseCount > 3) reason += ' • پر استفاده';
               if (stock <= 0) reason += ' • موجودی تمام شده';
+
+              // Add vendor and price info from last purchase
+              if (lastPurchase.vendorId) {
+                const vendorName = vendorMap.get(lastPurchase.vendorId);
+                if (vendorName) reason += ` • فروشنده: ${vendorName}`;
+              }
+              if (lastPurchase.pricePerUnit) {
+                reason += ` • قیمت: ${Math.round(lastPurchase.pricePerUnit).toLocaleString('fa-IR')}`;
+              }
 
               suggestions.push({
                 name: item.name,
@@ -1324,15 +1872,18 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
               list.items.forEach(item => {
                   if (item.status === ItemStatus.Bought && item.paymentStatus === PaymentStatus.Due) {
                       pending.push({
-                          ...item,
-                          listId: list.id,
-                          listName: list.name,
+                          itemName: item.name,
+                          unit: item.unit,
+                          totalDue: item.paidPrice || 0,
+                          vendorId: item.vendorId,
+                          vendorName: item.vendorId ? get().vendors.find(v => v.id === item.vendorId)?.name : undefined,
+                          listIds: [list.id],
                           purchaseDate: list.createdAt,
                       });
                   }
               });
           });
-          return pending.sort((a, b) => new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime());
+          return pending.sort((a, b) => new Date(a.purchaseDate || '').getTime() - new Date(b.purchaseDate || '').getTime());
       },
       getRecentPurchases: (count) => {
           const recent: RecentPurchaseItem[] = [];
@@ -1342,9 +1893,12 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                       .forEach(item => {
                           if (recent.length < count) {
                               recent.push({
-                                  ...item,
-                                  listId: list.id,
-                                  purchaseDate: list.createdAt
+                                  name: item.name,
+                                  unit: item.unit,
+                                  lastPurchaseDate: new Date(list.createdAt),
+                                  lastPricePerUnit: item.paidPrice || 0,
+                                  purchaseCount: 1,
+                                  listId: list.id
                               });
                           }
                       });
@@ -1404,8 +1958,8 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             totalSpend: allPurchases.reduce((sum, item) => sum + item.paidPrice!, 0),
             totalItems: new Set(allPurchases.map(item => item.name)).size,
             avgDailySpend: 0,
-            topCategory: null as { name: string, amount: number } | null,
-            topVendor: null as { name: string, amount: number } | null,
+            topCategory: null as { name: string, spend: number } | null,
+            topVendor: null as { name: string, spend: number } | null,
         };
 
         const totalDays = Math.max(1, (endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24));
@@ -1417,7 +1971,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         }, {} as Record<string, number>);
 
         const topCat = Object.entries(categorySpend).sort((a,b) => b[1] - a[1])[0];
-        if (topCat) kpis.topCategory = { name: topCat[0], amount: topCat[1] };
+        if (topCat) kpis.topCategory = { name: topCat[0], spend: topCat[1] };
 
         const vendorMap = new Map(get().vendors.map(v => [v.id, v.name]));
         const vendorSpend = allPurchases.reduce((acc, item) => {
@@ -1429,10 +1983,10 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         }, {} as Record<string, number>);
 
         const topVen = Object.entries(vendorSpend).sort((a,b) => b[1] - a[1])[0];
-        if (topVen) kpis.topVendor = { name: topVen[0], amount: topVen[1] };
+        if (topVen) kpis.topVendor = { name: topVen[0], spend: topVen[1] };
 
         // Chart Data
-        const spendingOverTime: { labels: string[]; data: number[] } = { labels: [], data: [] };
+        const spendOverTime: { labels: string[]; data: number[] } = { labels: [], data: [] };
         const timeMap = new Map<string, number>();
         for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
              const key = toJalaliDateString(d.toISOString());
@@ -1442,17 +1996,22 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             const key = toJalaliDateString(item.purchaseDate.toISOString());
             timeMap.set(key, (timeMap.get(key) || 0) + item.paidPrice!);
         });
-        spendingOverTime.labels = Array.from(timeMap.keys());
-        spendingOverTime.data = Array.from(timeMap.values());
+        spendOverTime.labels = Array.from(timeMap.keys());
+        spendOverTime.data = Array.from(timeMap.values());
 
-        const spendingByCategory: { labels: string[]; data: number[] } = { labels: [], data: [] };
+        const spendByCategory: { labels: string[]; data: number[] } = { labels: [], data: [] };
         const sortedCategories = Object.entries(categorySpend).sort((a,b) => b[1] - a[1]);
-        spendingByCategory.labels = sortedCategories.map(c => c[0]);
-        spendingByCategory.data = sortedCategories.map(c => c[1]);
+        spendByCategory.labels = sortedCategories.map(c => c[0]);
+        spendByCategory.data = sortedCategories.map(c => c[1]);
+
+        const spendByVendor: { labels: string[]; data: number[] } = { labels: [], data: [] };
+        const sortedVendors = Object.entries(vendorSpend).sort((a,b) => b[1] - a[1]);
+        spendByVendor.labels = sortedVendors.map(v => v[0]);
+        spendByVendor.data = sortedVendors.map(v => v[1]);
 
         return {
             kpis,
-            charts: { spendingOverTime, spendingByCategory },
+            charts: { spendOverTime, spendByCategory, spendByVendor },
             period: { startDate, endDate }
         };
       },
@@ -1467,9 +2026,12 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                 categoryVendorMap?: Record<string, string>;
                 itemInfoMap?: Record<string, { unit: string; category: string }>;
                 posItems?: unknown[];
+                posCategories?: string[];
                 sellTransactions?: unknown[];
                 recipes?: unknown[];
                 stockEntries?: Record<string, unknown>;
+                auditLog?: unknown[];
+                shifts?: unknown[];
             };
 
             if (Array.isArray(data.lists)) {
@@ -1516,7 +2078,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             }
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Import failed";
-            console.error("Import failed:", errorMessage);
+            logger.error("Import failed:", errorMessage);
             throw new Error(errorMessage);
         }
       },
@@ -1534,6 +2096,13 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             stockEntries: get().stockEntries,
             auditLog: get().auditLog,
             shifts: get().shifts,
+            accounts: get().accounts,
+            journalEntries: get().journalEntries,
+            taxSettings: get().taxSettings,
+            taxRates: get().taxRates,
+            customers: get().customers,
+            invoices: get().invoices,
+            payments: get().payments,
         };
         return JSON.stringify(data, null, 2);
       },
@@ -1576,7 +2145,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             metadata: { action: 'shift_started', shiftId: newShift.id, startingCash },
           }),
         }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
         return newShift.id;
       },
 
@@ -1615,7 +2184,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             metadata: { action: 'shift_ended', shiftId: activeShift.id, endingCash, expectedCash, difference },
           }),
         }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       getActiveShift: () => {
@@ -1627,6 +2196,357 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           if (!shift) return [];
           return get().sellTransactions.filter(t => shift.transactions.includes(t.id));
         },
+
+      // ========== ACCOUNTING FUNCTIONS (PHASE 1) ==========
+
+      initializeDefaultAccounts: () => {
+        const existingAccounts = get().accounts;
+        if (existingAccounts.length === 0) {
+          set({ accounts: createDefaultChartOfAccounts() });
+          debouncedSaveData(get);
+        }
+      },
+
+      addAccount: (accountData) => {
+        const newAccount: Account = {
+          ...accountData,
+          id: `acc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          createdAt: new Date().toISOString(),
+          balance: accountData.balance ?? 0,
+        };
+        set(state => ({ accounts: [...state.accounts, newAccount] }));
+        debouncedSaveData(get);
+        return newAccount.id;
+      },
+
+      updateAccount: (accountId, updates) => {
+        set(state => ({
+          accounts: state.accounts.map(acc =>
+            acc.id === accountId ? { ...acc, ...updates } : acc
+          )
+        }));
+        debouncedSaveData(get);
+      },
+
+      deleteAccount: (accountId) => {
+        // Check if account is used in journal entries
+        const hasEntries = get().journalEntries.some(je =>
+          je.entries.some(e => e.accountId === accountId)
+        );
+        if (hasEntries) {
+          throw new Error('Cannot delete account with existing journal entries');
+        }
+        set(state => ({ accounts: state.accounts.filter(acc => acc.id !== accountId) }));
+        debouncedSaveData(get);
+      },
+
+      getAccountById: (accountId) => {
+        return get().accounts.find(acc => acc.id === accountId);
+      },
+
+      getAccountByCode: (code) => {
+        return get().accounts.find(acc => acc.code === code);
+      },
+
+      getAccountsByType: (type) => {
+        return get().accounts.filter(acc => acc.type === type && acc.isActive);
+      },
+
+      createJournalEntry: (entryData) => {
+        // Validate that debits equal credits
+        const totalDebit = entryData.entries.reduce((sum, e) => sum + e.debit, 0);
+        const totalCredit = entryData.entries.reduce((sum, e) => sum + e.credit, 0);
+
+        if (Math.abs(totalDebit - totalCredit) > 0.01) {
+          throw new Error(`Journal entry must balance. Debits: ${totalDebit}, Credits: ${totalCredit}`);
+        }
+
+        const newEntry: JournalEntry = {
+          id: `je-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          createdAt: new Date().toISOString(),
+          ...entryData,
+        };
+
+        // Update account balances
+        set(state => {
+          const updatedAccounts = state.accounts.map(acc => {
+            const accountEntries = newEntry.entries.filter(e => e.accountId === acc.id);
+            if (accountEntries.length === 0) return acc;
+
+            let balanceChange = 0;
+            accountEntries.forEach(e => {
+              // For assets, expenses, COGS: debit increases, credit decreases
+              // For liabilities, equity, revenue: credit increases, debit decreases
+              if (acc.type === AccountType.Asset || acc.type === AccountType.Expense || acc.type === AccountType.COGS) {
+                balanceChange += e.debit - e.credit;
+              } else {
+                balanceChange += e.credit - e.debit;
+              }
+            });
+
+            return { ...acc, balance: acc.balance + balanceChange };
+          });
+
+          return {
+            accounts: updatedAccounts,
+            journalEntries: [...state.journalEntries, newEntry]
+          };
+        });
+
+        debouncedSaveData(get);
+        return newEntry.id;
+      },
+
+      getJournalEntriesByReference: (reference) => {
+        return get().journalEntries.filter(je => je.reference === reference);
+      },
+
+      reverseJournalEntry: (entryId, reason) => {
+        const originalEntry = get().journalEntries.find(je => je.id === entryId);
+        if (!originalEntry) {
+          throw new Error('Journal entry not found');
+        }
+
+        // Create reversal entry (swap debits and credits)
+        const reversalEntry: JournalEntry = {
+          id: `je-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          date: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          description: `برگشت: ${originalEntry.description} - ${reason}`,
+          reference: originalEntry.reference,
+          referenceType: originalEntry.referenceType,
+          entries: originalEntry.entries.map(e => ({
+            ...e,
+            debit: e.credit,
+            credit: e.debit,
+          })),
+          isAutomatic: false,
+          createdBy: get().currentUser?.username,
+        };
+
+        // Mark original as reversed
+        set(state => ({
+          journalEntries: state.journalEntries.map(je =>
+            je.id === entryId ? { ...je, isReversed: true } : je
+          )
+        }));
+
+        // Create the reversal
+        return get().createJournalEntry({
+          ...reversalEntry,
+          reversalOf: entryId,
+        });
+      },
+
+      // ========== TAX FUNCTIONS (PHASE 3) ==========
+
+      updateTaxSettings: (settings) => {
+        set(state => ({
+          taxSettings: { ...state.taxSettings, ...settings }
+        }));
+        debouncedSaveData(get);
+      },
+
+      addTaxRate: (taxRateData) => {
+        const taxPayableAccount = get().getAccountByCode('2-201'); // Tax Payable account
+        const newTaxRate: TaxRate = {
+          ...taxRateData,
+          id: `taxrate-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          createdAt: new Date().toISOString(),
+          accountId: taxRateData.accountId || taxPayableAccount?.id || '',
+        };
+        set(state => ({ taxRates: [...state.taxRates, newTaxRate] }));
+        debouncedSaveData(get);
+        return newTaxRate.id;
+      },
+
+      updateTaxRate: (taxRateId, updates) => {
+        set(state => ({
+          taxRates: state.taxRates.map(tr =>
+            tr.id === taxRateId ? { ...tr, ...updates } : tr
+          )
+        }));
+        debouncedSaveData(get);
+      },
+
+      deleteTaxRate: (taxRateId) => {
+        set(state => ({ taxRates: state.taxRates.filter(tr => tr.id !== taxRateId) }));
+        debouncedSaveData(get);
+      },
+
+      getTaxRateById: (taxRateId) => {
+        return get().taxRates.find(tr => tr.id === taxRateId);
+      },
+
+      getDefaultTaxRate: () => {
+        const defaultId = get().taxSettings.defaultTaxRateId;
+        if (defaultId) {
+          return get().getTaxRateById(defaultId);
+        }
+        // Return first active tax rate
+        return get().taxRates.find(tr => tr.isActive);
+      },
+
+      calculateTaxForAmount: (amount, taxRateId) => {
+        const state = get();
+        if (!state.taxSettings.enabled) {
+          return { taxAmount: 0, taxRate: 0, total: amount };
+        }
+
+        let taxRate: TaxRate | undefined;
+        if (taxRateId) {
+          taxRate = state.getTaxRateById(taxRateId);
+        } else {
+          taxRate = state.getDefaultTaxRate();
+        }
+
+        if (!taxRate || !taxRate.isActive) {
+          return { taxAmount: 0, taxRate: 0, total: amount };
+        }
+
+        const taxAmount = state.taxSettings.includeTaxInPrice
+          ? amount * taxRate.rate / (1 + taxRate.rate) // Tax is included in price
+          : amount * taxRate.rate; // Tax is added on top
+
+        const total = state.taxSettings.includeTaxInPrice
+          ? amount // Total is already the amount
+          : amount + taxAmount; // Add tax to amount
+
+        return {
+          taxAmount: Math.round(taxAmount * 100) / 100,
+          taxRate: taxRate.rate,
+          total: Math.round(total * 100) / 100
+        };
+      },
+
+      getAccountBalance: (accountId, asOfDate) => {
+        const account = get().getAccountById(accountId);
+        if (!account) return 0;
+
+        if (!asOfDate) {
+          return account.balance;
+        }
+
+        // Calculate balance up to a specific date
+        const relevantEntries = get().journalEntries.filter(je =>
+          new Date(je.date) <= asOfDate && !je.isReversed
+        );
+
+        let balance = 0;
+        relevantEntries.forEach(je => {
+          je.entries.forEach(e => {
+            if (e.accountId === accountId) {
+              if (account.type === AccountType.Asset || account.type === AccountType.Expense || account.type === AccountType.COGS) {
+                balance += e.debit - e.credit;
+              } else {
+                balance += e.credit - e.debit;
+              }
+            }
+          });
+        });
+
+        return balance;
+      },
+
+      getGeneralLedger: (accountId, startDate, endDate) => {
+        const accounts = accountId
+          ? [get().getAccountById(accountId)].filter((a): a is Account => a !== undefined)
+          : get().accounts.filter(a => a.isActive);
+
+        return accounts.map(account => {
+          const relevantEntries = get().journalEntries
+            .filter(je => {
+              if (je.isReversed) return false;
+              const jeDate = new Date(je.date);
+              if (startDate && jeDate < startDate) return false;
+              if (endDate && jeDate > endDate) return false;
+              return je.entries.some(e => e.accountId === account.id);
+            })
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+          let runningBalance = startDate
+            ? get().getAccountBalance(account.id, startDate)
+            : 0;
+
+          const entries = relevantEntries.map(je => {
+            const accountEntry = je.entries.find(e => e.accountId === account.id);
+            if (!accountEntry) return null;
+
+            const debit = accountEntry.debit;
+            const credit = accountEntry.credit;
+
+            // Update running balance
+            if (account.type === AccountType.Asset || account.type === AccountType.Expense || account.type === AccountType.COGS) {
+              runningBalance += debit - credit;
+            } else {
+              runningBalance += credit - debit;
+            }
+
+            return {
+              date: je.date,
+              description: je.description,
+              reference: je.reference,
+              debit,
+              credit,
+              balance: runningBalance,
+            };
+          }).filter((e): e is NonNullable<typeof e> => e !== null);
+
+          return {
+            account,
+            entries,
+            openingBalance: startDate ? get().getAccountBalance(account.id, startDate) : 0,
+            closingBalance: runningBalance,
+          };
+        });
+      },
+
+      getTrialBalance: (asOfDate) => {
+        const date = asOfDate || new Date();
+        const accounts = get().accounts.filter(a => a.isActive);
+
+        const entries: TrialBalanceEntry[] = accounts.map(account => {
+          const balance = get().getAccountBalance(account.id, date);
+
+          // Determine debit or credit based on account type and balance
+          let debit = 0;
+          let credit = 0;
+
+          if (account.type === AccountType.Asset || account.type === AccountType.Expense || account.type === AccountType.COGS) {
+            // Normal debit balance accounts
+            if (balance >= 0) {
+              debit = balance;
+            } else {
+              credit = Math.abs(balance);
+            }
+          } else {
+            // Normal credit balance accounts (Liability, Equity, Revenue)
+            if (balance >= 0) {
+              credit = balance;
+            } else {
+              debit = Math.abs(balance);
+            }
+          }
+
+          return {
+            account,
+            debit,
+            credit,
+            balance,
+          };
+        }).filter(entry => entry.debit !== 0 || entry.credit !== 0); // Only show accounts with balances
+
+        const totalDebit = entries.reduce((sum, e) => sum + e.debit, 0);
+        const totalCredit = entries.reduce((sum, e) => sum + e.credit, 0);
+        const balanced = Math.abs(totalDebit - totalCredit) < 0.01;
+
+        return {
+          entries,
+          totalDebit,
+          totalCredit,
+          balanced,
+        };
+      },
 
       // ========== POS ITEMS ACTIONS ==========
       addPOSItem: (data) => {
@@ -1642,7 +2562,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             metadata: { category: newPOSItem.category, price: newPOSItem.sellPrice },
           }),
         }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
         return newPOSItem.id;
       },
 
@@ -1654,20 +2574,22 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             entityId: posItemId,
             entityName: oldItem?.name,
             changes: Object.keys(updates).reduce((acc, key) => {
+              const oldValue = oldItem && key in oldItem ? (oldItem as unknown as Record<string, unknown>)[key] : undefined;
+              const newValue = key in updates ? (updates as unknown as Record<string, unknown>)[key] : undefined;
               acc[key] = {
-                old: (oldItem as any)?.[key],
-                new: (updates as any)[key],
+                old: oldValue,
+                new: newValue,
               };
               return acc;
             }, {} as Record<string, { old?: unknown; new?: unknown }>),
           }),
         }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       deletePOSItem: (posItemId) => {
         set(state => ({ posItems: state.posItems.filter(item => item.id !== posItemId) }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       getPOSItemsByCategory: (category) => {
@@ -1695,7 +2617,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           ...recipe,
         };
         set(state => ({ recipes: [...state.recipes, newRecipe] }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
         return newRecipe.id;
       },
 
@@ -1707,15 +2629,17 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             entityId: recipeId,
             entityName: oldRecipe?.name,
             changes: Object.keys(updates).reduce((acc, key) => {
+              const oldValue = oldRecipe && key in oldRecipe ? (oldRecipe as unknown as Record<string, unknown>)[key] : undefined;
+              const newValue = key in updates ? (updates as unknown as Record<string, unknown>)[key] : undefined;
               acc[key] = {
-                old: (oldRecipe as any)?.[key],
-                new: (updates as any)[key],
+                old: oldValue,
+                new: newValue,
               };
               return acc;
             }, {} as Record<string, { old?: unknown; new?: unknown }>),
           }),
         }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       deleteRecipe: (recipeId) => {
@@ -1728,7 +2652,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             entityName: recipe?.name,
           }),
         }));
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       calculateRecipeCost: (recipeId) => {
@@ -1774,6 +2698,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         }));
 
         // Update stock for each item sold
+        let totalCOGS = 0;
         newTransaction.items.forEach(item => {
           // If this is a recipe item, deduct ingredients
           const posItem = get().posItems.find(p => p.id === item.posItemId);
@@ -1783,6 +2708,8 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
               recipe.ingredients.forEach(ingredient => {
                 get().updateStock(ingredient.itemName, ingredient.itemUnit, -(ingredient.requiredQuantity * item.quantity));
               });
+              // Add COGS for this item
+              totalCOGS += item.costOfGoods || 0;
             }
           }
         });
@@ -1799,7 +2726,91 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             },
           }),
         }));
-        debouncedSaveData(get());
+
+        // Create automatic journal entry for the sale
+        try {
+          const cashAccount = get().getAccountByCode('1-101');
+          const bankAccount = get().getAccountByCode('1-102');
+          const revenueAccount = get().getAccountByCode('4-101');
+          const cogsAccount = get().getAccountByCode('5-101');
+          const inventoryAccount = get().getAccountByCode('1-201');
+
+          if (!revenueAccount) {
+            logger.warn('Revenue account not found, skipping journal entry');
+          } else {
+            // Determine which account to debit based on payment method
+            let debitAccountId = cashAccount?.id;
+            if (transaction.paymentMethod === PaymentMethod.Card || transaction.paymentMethod === PaymentMethod.Transfer) {
+              debitAccountId = bankAccount?.id;
+            }
+
+            if (debitAccountId) {
+              const journalEntries: Array<{accountId: string, debit: number, credit: number, description?: string}> = [];
+
+              // Check if transaction includes tax
+              const taxAmount = newTransaction.taxAmount || 0;
+              const subtotal = newTransaction.subtotal || newTransaction.totalAmount;
+              const taxPayableAccount = get().getAccountByCode('2-201'); // Tax Payable
+
+              // Main sales entry: Debit Cash/Bank, Credit Revenue (net of tax) + Tax Payable
+              journalEntries.push({
+                accountId: debitAccountId,
+                debit: newTransaction.totalAmount, // Total amount received (including tax)
+                credit: 0,
+                description: transaction.paymentMethod === PaymentMethod.Cash ? 'صندوق' : 'بانک'
+              });
+
+              journalEntries.push({
+                accountId: revenueAccount.id,
+                debit: 0,
+                credit: subtotal, // Revenue without tax
+                description: 'درآمد فروش'
+              });
+
+              // Tax Payable entry if tax exists
+              if (taxAmount > 0 && taxPayableAccount) {
+                journalEntries.push({
+                  accountId: taxPayableAccount.id,
+                  debit: 0,
+                  credit: taxAmount,
+                  description: 'مالیات فروش'
+                });
+              }
+
+              // COGS entry if applicable: Debit COGS, Credit Inventory
+              if (totalCOGS > 0 && cogsAccount && inventoryAccount) {
+                journalEntries.push({
+                  accountId: cogsAccount.id,
+                  debit: totalCOGS,
+                  credit: 0,
+                  description: 'بهای تمام شده'
+                });
+
+                journalEntries.push({
+                  accountId: inventoryAccount.id,
+                  debit: 0,
+                  credit: totalCOGS,
+                  description: 'کاهش موجودی'
+                });
+              }
+
+              get().createJournalEntry({
+                date: newTransaction.date,
+                description: `فروش #${nextReceiptNumber}`,
+                reference: newTransaction.id,
+                referenceType: 'sale',
+                entries: journalEntries,
+                isAutomatic: true,
+                createdBy: get().currentUser?.username,
+              });
+            }
+          }
+        } catch (error) {
+          logger.error('Failed to create journal entry for sale:', error);
+          // Don't fail the transaction if journal entry fails
+        }
+
+        debouncedSaveData(get);
         return newTransaction.id;
       },
 
@@ -1834,9 +2845,11 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             ...addAuditLogEntry(state, 'transaction_updated', {
               entityId: transactionId,
               changes: Object.keys(updates).reduce((acc, key) => {
+                const oldValue = oldTransaction && key in oldTransaction ? (oldTransaction as unknown as Record<string, unknown>)[key] : undefined;
+                const newValue = key in updates ? (updates as unknown as Record<string, unknown>)[key] : undefined;
                 acc[key] = {
-                  old: (oldTransaction as any)?.[key],
-                  new: (updates as any)[key],
+                  old: oldValue,
+                  new: newValue,
                 };
                 return acc;
               }, {} as Record<string, { old?: unknown; new?: unknown }>),
@@ -1844,7 +2857,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           };
           return newState;
         });
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       deleteSellTransaction: (transactionId) => {
@@ -1879,7 +2892,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         } else {
           set(state => ({ sellTransactions: state.sellTransactions.filter(t => t.id !== transactionId) }));
         }
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       // ========== STOCK MANAGEMENT ==========
@@ -1912,7 +2925,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             }) : {}),
           };
         });
-        debouncedSaveData(get());
+        debouncedSaveData(get);
       },
 
       getStock: (itemName, itemUnit) => {
@@ -2091,5 +3104,711 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             endDate: new Date(Math.max(buySummary.period.endDate.getTime(), sellSummary.period.endDate.getTime())),
           }
         };
+      },
+
+      // ========== FINANCIAL STATEMENTS (PHASE 2) ==========
+
+      getBalanceSheet: (asOfDate) => {
+        const date = asOfDate || new Date();
+        const accounts = get().accounts.filter(a => a.isActive);
+
+        // Categorize accounts
+        const assets = accounts.filter(a => a.type === AccountType.Asset);
+        const liabilities = accounts.filter(a => a.type === AccountType.Liability);
+        const equity = accounts.filter(a => a.type === AccountType.Equity);
+
+        // Get balances as of date
+        const assetBalances = assets.map(acc => ({
+          account: acc,
+          amount: get().getAccountBalance(acc.id, date)
+        })).filter(item => item.amount !== 0);
+
+        const liabilityBalances = liabilities.map(acc => ({
+          account: acc,
+          amount: get().getAccountBalance(acc.id, date)
+        })).filter(item => item.amount !== 0);
+
+        const equityBalances = equity.map(acc => ({
+          account: acc,
+          amount: get().getAccountBalance(acc.id, date)
+        })).filter(item => item.amount !== 0);
+
+        // For now, treat all assets as current (can be enhanced later)
+        const totalAssets = assetBalances.reduce((sum, item) => sum + item.amount, 0);
+        const totalLiabilities = liabilityBalances.reduce((sum, item) => sum + item.amount, 0);
+        const totalEquity = equityBalances.reduce((sum, item) => sum + item.amount, 0);
+
+        const balanced = Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01;
+
+        return {
+          asOfDate: date,
+          assets: {
+            current: assetBalances,
+            nonCurrent: [],
+            total: totalAssets,
+          },
+          liabilities: {
+            current: liabilityBalances,
+            nonCurrent: [],
+            total: totalLiabilities,
+          },
+          equity: {
+            accounts: equityBalances,
+            total: totalEquity,
+          },
+          balanced,
+        };
+      },
+
+      getIncomeStatement: (startDate, endDate) => {
+        const end = endDate || new Date();
+        const start = startDate || new Date(end.getFullYear(), end.getMonth(), 1); // Default to current month
+
+        // Get all journal entries in the period
+        const relevantEntries = get().journalEntries.filter(je => {
+          const jeDate = new Date(je.date);
+          return jeDate >= start && jeDate <= end && !je.isReversed;
+        });
+
+        const accounts = get().accounts;
+
+        // Calculate revenue
+        const revenueAccounts = accounts.filter(a => a.type === AccountType.Revenue && a.isActive);
+        const revenue = revenueAccounts.map(acc => {
+          let amount = 0;
+          relevantEntries.forEach(je => {
+            je.entries.forEach(e => {
+              if (e.accountId === acc.id) {
+                amount += e.credit - e.debit; // Revenue increases with credits
+              }
+            });
+          });
+          return { account: acc, amount };
+        }).filter(item => item.amount !== 0);
+
+        const totalRevenue = revenue.reduce((sum, item) => sum + item.amount, 0);
+
+        // Calculate COGS
+        const cogsAccounts = accounts.filter(a => a.type === AccountType.COGS && a.isActive);
+        const cogs = cogsAccounts.map(acc => {
+          let amount = 0;
+          relevantEntries.forEach(je => {
+            je.entries.forEach(e => {
+              if (e.accountId === acc.id) {
+                amount += e.debit - e.credit; // COGS increases with debits
+              }
+            });
+          });
+          return { account: acc, amount };
+        }).filter(item => item.amount !== 0);
+
+        const totalCOGS = cogs.reduce((sum, item) => sum + item.amount, 0);
+
+        // Calculate gross profit
+        const grossProfit = totalRevenue - totalCOGS;
+        const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+
+        // Calculate expenses
+        const expenseAccounts = accounts.filter(a => a.type === AccountType.Expense && a.isActive);
+        const expenses = expenseAccounts.map(acc => {
+          let amount = 0;
+          relevantEntries.forEach(je => {
+            je.entries.forEach(e => {
+              if (e.accountId === acc.id) {
+                amount += e.debit - e.credit; // Expenses increase with debits
+              }
+            });
+          });
+          return { account: acc, amount };
+        }).filter(item => item.amount !== 0);
+
+        const totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
+
+        // Calculate net income
+        const netIncome = grossProfit - totalExpenses;
+        const netMargin = totalRevenue > 0 ? (netIncome / totalRevenue) * 100 : 0;
+
+        return {
+          startDate: start,
+          endDate: end,
+          revenue: {
+            accounts: revenue,
+            total: totalRevenue,
+          },
+          cogs: {
+            accounts: cogs,
+            total: totalCOGS,
+          },
+          grossProfit,
+          grossMargin,
+          expenses: {
+            accounts: expenses,
+            total: totalExpenses,
+          },
+          netIncome,
+          netMargin,
+        };
+      },
+
+      getCashFlowStatement: (startDate, endDate) => {
+        const end = endDate || new Date();
+        const start = startDate || new Date(end.getFullYear(), end.getMonth(), 1);
+
+        // Get income statement data
+        const incomeStatement = get().getIncomeStatement(start, end);
+
+        // Get cash accounts
+        const cashAccount = get().getAccountByCode('1-101');
+        const bankAccount = get().getAccountByCode('1-102');
+
+        let beginningCash = 0;
+        let endingCash = 0;
+
+        if (cashAccount) {
+          const startOfPeriod = new Date(start);
+          startOfPeriod.setDate(startOfPeriod.getDate() - 1);
+          beginningCash += get().getAccountBalance(cashAccount.id, startOfPeriod);
+          endingCash += get().getAccountBalance(cashAccount.id, end);
+        }
+
+        if (bankAccount) {
+          const startOfPeriod = new Date(start);
+          startOfPeriod.setDate(startOfPeriod.getDate() - 1);
+          beginningCash += get().getAccountBalance(bankAccount.id, startOfPeriod);
+          endingCash += get().getAccountBalance(bankAccount.id, end);
+        }
+
+        // Simplified cash flow calculation
+        // Operating activities
+        const operatingAdjustments: Array<{ description: string; amount: number }> = [];
+
+        // Get inventory change
+        const inventoryAccount = get().getAccountByCode('1-201');
+        if (inventoryAccount) {
+          const startOfPeriod = new Date(start);
+          startOfPeriod.setDate(startOfPeriod.getDate() - 1);
+          const startInventory = get().getAccountBalance(inventoryAccount.id, startOfPeriod);
+          const endInventory = get().getAccountBalance(inventoryAccount.id, end);
+          const inventoryChange = endInventory - startInventory;
+          if (inventoryChange !== 0) {
+            operatingAdjustments.push({
+              description: 'تغییرات موجودی کالا',
+              amount: -inventoryChange, // Increase in inventory uses cash
+            });
+          }
+        }
+
+        // Get AP change
+        const apAccount = get().getAccountByCode('2-101');
+        if (apAccount) {
+          const startOfPeriod = new Date(start);
+          startOfPeriod.setDate(startOfPeriod.getDate() - 1);
+          const startAP = get().getAccountBalance(apAccount.id, startOfPeriod);
+          const endAP = get().getAccountBalance(apAccount.id, end);
+          const apChange = endAP - startAP;
+          if (apChange !== 0) {
+            operatingAdjustments.push({
+              description: 'تغییرات حساب‌های پرداختنی',
+              amount: apChange, // Increase in AP provides cash
+            });
+          }
+        }
+
+        const totalOperatingAdjustments = operatingAdjustments.reduce((sum, adj) => sum + adj.amount, 0);
+        const netCashFromOperating = incomeStatement.netIncome + totalOperatingAdjustments;
+
+        // Investing and financing activities (minimal for now)
+        const investingItems: Array<{ description: string; amount: number }> = [];
+        const financingItems: Array<{ description: string; amount: number }> = [];
+
+        const netCashFromInvesting = investingItems.reduce((sum, item) => sum + item.amount, 0);
+        const netCashFromFinancing = financingItems.reduce((sum, item) => sum + item.amount, 0);
+
+        const netCashFlow = netCashFromOperating + netCashFromInvesting + netCashFromFinancing;
+
+        return {
+          startDate: start,
+          endDate: end,
+          operatingActivities: {
+            netIncome: incomeStatement.netIncome,
+            adjustments: operatingAdjustments,
+            total: netCashFromOperating,
+          },
+          investingActivities: {
+            items: investingItems,
+            total: netCashFromInvesting,
+          },
+          financingActivities: {
+            items: financingItems,
+            total: netCashFromFinancing,
+          },
+          netCashFlow,
+          beginningCash,
+          endingCash,
+        };
+      },
+
+      // ========== TAX REPORTS (PHASE 3) ==========
+      getTaxReport: (startDate, endDate) => {
+        const end = endDate || new Date();
+        const start = startDate || new Date(end.getFullYear(), end.getMonth(), 1);
+
+        const transactions = get().sellTransactions.filter(t => {
+          const transDate = new Date(t.date);
+          return transDate >= start && transDate <= end && !t.isRefund;
+        });
+
+        let taxableRevenue = 0;
+        let nonTaxableRevenue = 0;
+        let taxCollected = 0;
+        const taxTransactions: TaxReportData['transactions'] = [];
+
+        transactions.forEach(trans => {
+          const transTaxAmount = trans.taxAmount || 0;
+          const transSubtotal = trans.subtotal || trans.totalAmount;
+
+          if (transTaxAmount > 0) {
+            taxableRevenue += transSubtotal;
+            taxCollected += transTaxAmount;
+            taxTransactions.push({
+              id: trans.id,
+              date: trans.date,
+              receiptNumber: trans.receiptNumber,
+              amount: transSubtotal,
+              taxAmount: transTaxAmount,
+              taxRate: transSubtotal > 0 ? transTaxAmount / transSubtotal : 0,
+            });
+          } else {
+            nonTaxableRevenue += transSubtotal;
+          }
+        });
+
+        const totalRevenue = taxableRevenue + nonTaxableRevenue;
+        const averageTaxRate = taxableRevenue > 0 ? taxCollected / taxableRevenue : 0;
+
+        return {
+          startDate: start,
+          endDate: end,
+          taxableRevenue,
+          nonTaxableRevenue,
+          totalRevenue,
+          taxCollected,
+          taxRate: averageTaxRate,
+          transactions: taxTransactions,
+        };
+      },
+
+      // ========== CUSTOMER & INVOICE FUNCTIONS (PHASE 4) ==========
+
+      addCustomer: (customerData) => {
+        const newCustomer: Customer = {
+          ...customerData,
+          id: `cust-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          createdAt: new Date().toISOString(),
+          balance: 0,
+          isActive: customerData.isActive ?? true,
+        };
+        set(state => ({ customers: [...state.customers, newCustomer] }));
+        debouncedSaveData(get);
+        return newCustomer.id;
+      },
+
+      updateCustomer: (customerId, updates) => {
+        set(state => ({
+          customers: state.customers.map(c =>
+            c.id === customerId ? { ...c, ...updates } : c
+          )
+        }));
+        debouncedSaveData(get);
+      },
+
+      deleteCustomer: (customerId) => {
+        // Check if customer has outstanding invoices
+        const hasInvoices = get().invoices.some(inv =>
+          inv.customerId === customerId && inv.status !== InvoiceStatus.Paid && inv.status !== InvoiceStatus.Cancelled
+        );
+        if (hasInvoices) {
+          throw new Error('Cannot delete customer with outstanding invoices');
+        }
+        set(state => ({ customers: state.customers.filter(c => c.id !== customerId) }));
+        debouncedSaveData(get);
+      },
+
+      getCustomerById: (customerId) => {
+        return get().customers.find(c => c.id === customerId);
+      },
+
+      getCustomerBalance: (customerId) => {
+        const customer = get().getCustomerById(customerId);
+        if (!customer) return 0;
+
+        // Calculate from unpaid invoices
+        const invoices = get().invoices.filter(inv =>
+          inv.customerId === customerId &&
+          inv.type === InvoiceType.Sale &&
+          inv.status !== InvoiceStatus.Paid &&
+          inv.status !== InvoiceStatus.Cancelled
+        );
+
+        return invoices.reduce((sum, inv) => sum + (inv.totalAmount - inv.paidAmount), 0);
+      },
+
+      createInvoice: (invoiceData) => {
+        const newInvoice: Invoice = {
+          id: `inv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          paidAmount: 0,
+          status: InvoiceStatus.Draft,
+          ...invoiceData,
+        };
+        set(state => ({ invoices: [...state.invoices, newInvoice] }));
+        debouncedSaveData(get);
+
+        // Create journal entry if not draft
+        if (newInvoice.status !== InvoiceStatus.Draft) {
+          get()._createInvoiceJournalEntry(newInvoice);
+        }
+
+        return newInvoice.id;
+      },
+
+      updateInvoice: (invoiceId, updates) => {
+        set(state => ({
+          invoices: state.invoices.map(inv =>
+            inv.id === invoiceId ? { ...inv, ...updates, updatedAt: new Date().toISOString() } : inv
+          )
+        }));
+        debouncedSaveData(get);
+      },
+
+      deleteInvoice: (invoiceId) => {
+        const invoice = get().getInvoiceById(invoiceId);
+        if (invoice && invoice.paidAmount > 0) {
+          throw new Error('Cannot delete invoice with payments');
+        }
+        set(state => ({ invoices: state.invoices.filter(inv => inv.id !== invoiceId) }));
+        debouncedSaveData(get);
+      },
+
+      getInvoiceById: (invoiceId) => {
+        return get().invoices.find(inv => inv.id === invoiceId);
+      },
+
+      getInvoicesByCustomer: (customerId) => {
+        return get().invoices.filter(inv => inv.customerId === customerId);
+      },
+
+      getInvoicesByVendor: (vendorId) => {
+        return get().invoices.filter(inv => inv.vendorId === vendorId);
+      },
+
+      getOverdueInvoices: (type) => {
+        const now = new Date();
+        return get().invoices.filter(inv => {
+          if (type === 'receivable' && inv.type !== InvoiceType.Sale) return false;
+          if (type === 'payable' && inv.type !== InvoiceType.Purchase) return false;
+          if (inv.status === InvoiceStatus.Paid || inv.status === InvoiceStatus.Cancelled) return false;
+
+          const dueDate = new Date(inv.dueDate);
+          return dueDate < now;
+        });
+      },
+
+      recordPayment: (paymentData) => {
+        const invoice = get().getInvoiceById(paymentData.invoiceId);
+        if (!invoice) {
+          throw new Error('Invoice not found');
+        }
+
+        const newPayment: Payment = {
+          id: `pay-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          createdAt: new Date().toISOString(),
+          ...paymentData,
+        };
+
+        // Update invoice
+        const newPaidAmount = invoice.paidAmount + paymentData.amount;
+        let newStatus = invoice.status;
+
+        if (newPaidAmount >= invoice.totalAmount) {
+          newStatus = InvoiceStatus.Paid;
+        } else if (newPaidAmount > 0) {
+          newStatus = InvoiceStatus.PartiallyPaid;
+        }
+
+        get().updateInvoice(invoice.id, {
+          paidAmount: newPaidAmount,
+          status: newStatus,
+        });
+
+        set(state => ({ payments: [...state.payments, newPayment] }));
+        debouncedSaveData(get);
+
+        // Create journal entry for payment
+        get()._createPaymentJournalEntry(newPayment, invoice);
+
+        return newPayment.id;
+      },
+
+      getPaymentsByInvoice: (invoiceId) => {
+        return get().payments.filter(p => p.invoiceId === invoiceId);
+      },
+
+      getAgingReport: (type, asOfDate) => {
+        const asOf = asOfDate || new Date();
+        const invoices = get().invoices.filter(inv => {
+          if (type === 'receivable' && inv.type !== InvoiceType.Sale) return false;
+          if (type === 'payable' && inv.type !== InvoiceType.Purchase) return false;
+          if (inv.status === InvoiceStatus.Paid || inv.status === InvoiceStatus.Cancelled) return false;
+
+          const invDate = new Date(inv.issueDate);
+          return invDate <= asOf;
+        });
+
+        const current: AgingBucket = { period: '0-30 days', amount: 0, count: 0 };
+        const days31to60: AgingBucket = { period: '31-60 days', amount: 0, count: 0 };
+        const days61to90: AgingBucket = { period: '61-90 days', amount: 0, count: 0 };
+        const over90: AgingBucket = { period: 'Over 90 days', amount: 0, count: 0 };
+
+        const details: AgingReportData['details'] = [];
+
+        invoices.forEach(inv => {
+          const dueDate = new Date(inv.dueDate);
+          const daysOverdue = Math.floor((asOf.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+          const outstanding = inv.totalAmount - inv.paidAmount;
+
+          let name = '';
+          if (inv.customerId) {
+            const customer = get().getCustomerById(inv.customerId);
+            name = customer?.name || 'Unknown Customer';
+          } else if (inv.vendorId) {
+            const vendor = get().vendors.find(v => v.id === inv.vendorId);
+            name = vendor?.name || 'Unknown Vendor';
+          }
+
+          details.push({
+            id: inv.id,
+            name,
+            invoiceNumber: inv.invoiceNumber,
+            invoiceDate: inv.issueDate,
+            dueDate: inv.dueDate,
+            amount: outstanding,
+            daysOverdue,
+          });
+
+          // Only count invoices that are actually due (daysOverdue >= 0)
+          // Invoices with negative daysOverdue are not yet due and should be excluded
+          if (daysOverdue < 0) {
+            // Not yet due - exclude from aging report
+            return;
+          } else if (daysOverdue <= 30) {
+            current.amount += outstanding;
+            current.count++;
+          } else if (daysOverdue <= 60) {
+            days31to60.amount += outstanding;
+            days31to60.count++;
+          } else if (daysOverdue <= 90) {
+            days61to90.amount += outstanding;
+            days61to90.count++;
+          } else {
+            // daysOverdue > 90
+            over90.amount += outstanding;
+            over90.count++;
+          }
+        });
+
+        const total = current.amount + days31to60.amount + days61to90.amount + over90.amount;
+
+        return {
+          type,
+          asOfDate: asOf,
+          current,
+          days31to60,
+          days61to90,
+          over90,
+          total,
+          details: details.sort((a, b) => b.daysOverdue - a.daysOverdue),
+        };
+      },
+
+      // Internal helper functions for journal entries
+      _createInvoiceJournalEntry: (invoice: Invoice) => {
+        const entries: Array<{accountId: string, debit: number, credit: number, description?: string}> = [];
+
+        if (invoice.type === InvoiceType.Sale) {
+          // Accounts Receivable entry
+          const arAccount = get().getAccountByCode('1-301'); // AR
+          const revenueAccount = get().getAccountByCode('4-101'); // Revenue
+          const taxPayableAccount = get().getAccountByCode('2-201'); // Tax Payable
+
+          if (arAccount && revenueAccount) {
+            entries.push({
+              accountId: arAccount.id,
+              debit: invoice.totalAmount,
+              credit: 0,
+              description: 'حساب‌های دریافتنی',
+            });
+
+            entries.push({
+              accountId: revenueAccount.id,
+              debit: 0,
+              credit: invoice.subtotal,
+              description: 'درآمد فروش',
+            });
+
+            if (invoice.taxAmount > 0 && taxPayableAccount) {
+              entries.push({
+                accountId: taxPayableAccount.id,
+                debit: 0,
+                credit: invoice.taxAmount,
+                description: 'مالیات فروش',
+              });
+            }
+
+            get().createJournalEntry({
+              date: invoice.issueDate,
+              description: `فاکتور فروش #${invoice.invoiceNumber}`,
+              reference: invoice.id,
+              referenceType: 'sale',
+              entries,
+              isAutomatic: true,
+            });
+          }
+        } else if (invoice.type === InvoiceType.Purchase) {
+          // Accounts Payable entry
+          const apAccount = get().getAccountByCode('2-101'); // AP
+          const expenseAccount = get().getAccountByCode('6-101'); // Expense or Inventory
+
+          if (apAccount && expenseAccount) {
+            entries.push({
+              accountId: expenseAccount.id,
+              debit: invoice.totalAmount,
+              credit: 0,
+              description: 'هزینه خرید',
+            });
+
+            entries.push({
+              accountId: apAccount.id,
+              debit: 0,
+              credit: invoice.totalAmount,
+              description: 'حساب‌های پرداختنی',
+            });
+
+            get().createJournalEntry({
+              date: invoice.issueDate,
+              description: `فاکتور خرید #${invoice.invoiceNumber}`,
+              reference: invoice.id,
+              referenceType: 'purchase',
+              entries,
+              isAutomatic: true,
+            });
+          }
+        }
+      },
+
+      _createPaymentJournalEntry: (payment: Payment, invoice: Invoice) => {
+        const entries: Array<{accountId: string, debit: number, credit: number, description?: string}> = [];
+
+        // Determine cash/bank account
+        const cashAccount = get().getAccountByCode('1-101');
+        const bankAccount = get().getAccountByCode('1-102');
+        const paymentAccount = payment.paymentMethod === PaymentMethod.Cash ? cashAccount : bankAccount;
+
+        if (invoice.type === InvoiceType.Sale) {
+          // Customer payment - reduce AR, increase Cash/Bank
+          const arAccount = get().getAccountByCode('1-301');
+
+          if (arAccount && paymentAccount) {
+            entries.push({
+              accountId: paymentAccount.id,
+              debit: payment.amount,
+              credit: 0,
+              description: 'دریافت وجه',
+            });
+
+            entries.push({
+              accountId: arAccount.id,
+              debit: 0,
+              credit: payment.amount,
+              description: 'کاهش حساب دریافتنی',
+            });
+
+            get().createJournalEntry({
+              date: payment.paymentDate,
+              description: `دریافت وجه فاکتور #${invoice.invoiceNumber}`,
+              reference: payment.id,
+              referenceType: 'payment',
+              entries,
+              isAutomatic: true,
+            });
+          }
+        } else if (invoice.type === InvoiceType.Purchase) {
+          // Vendor payment - reduce AP, decrease Cash/Bank
+          const apAccount = get().getAccountByCode('2-101');
+
+          if (apAccount && paymentAccount) {
+            entries.push({
+              accountId: apAccount.id,
+              debit: payment.amount,
+              credit: 0,
+              description: 'کاهش حساب پرداختنی',
+            });
+
+            entries.push({
+              accountId: paymentAccount.id,
+              debit: 0,
+              credit: payment.amount,
+              description: 'پرداخت وجه',
+            });
+
+            get().createJournalEntry({
+              date: payment.paymentDate,
+              description: `پرداخت وجه فاکتور #${invoice.invoiceNumber}`,
+              reference: payment.id,
+              referenceType: 'payment',
+              entries,
+              isAutomatic: true,
+            });
+          }
+        }
+      },
+
+      // User Management
+      addUser: (userData) => {
+        const userId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const salt = crypto.getRandomValues(new Uint8Array(16)).reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '');
+        // Note: passwordHash must be provided or will be set to empty string (user should set password via updateUser)
+        const passwordHash = userData.passwordHash || '';
+
+        const newUser: User = {
+          id: userId,
+          username: userData.username,
+          role: userData.role || 'cashier',
+          passwordHash,
+          salt,
+        };
+
+        set((state) => ({ users: [...state.users, newUser] }));
+        return userId;
+      },
+
+      updateUser: (userId, updates) => {
+        set((state) => ({
+          users: state.users.map((user) =>
+            user.id === userId ? { ...user, ...updates } : user
+          ),
+        }));
+      },
+
+      deleteUser: (userId) => {
+        const currentUser = get().currentUser;
+        if (currentUser?.id === userId) {
+          // Don't allow deleting the currently logged-in user
+          throw new Error('Cannot delete the currently logged-in user');
+        }
+        set((state) => ({
+          users: state.users.filter((user) => user.id !== userId),
+        }));
       },
 }));

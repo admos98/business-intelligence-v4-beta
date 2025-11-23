@@ -10,16 +10,43 @@ import { User } from '../../shared/types';
  * - VITE_DEFAULT_SALT
  */
 const getDefaultUsers = (): User[] => {
-    // Check for environment variables first (for build-time configuration)
-    const username = import.meta.env.VITE_DEFAULT_USERNAME || 'mehrnoosh';
-    const passwordHash = import.meta.env.VITE_DEFAULT_PASSWORD_HASH || '02dc4c8ba1c2c109611b8f08baad4b9cf5f268d1c4aee6d21fd97be4ec1b1385';
-    const salt = import.meta.env.VITE_DEFAULT_SALT || '3bb5f7b9d6a64e5ab74c2f6d4c8a02e2';
+    const isDevelopment = import.meta.env.DEV;
+    const username = import.meta.env.VITE_DEFAULT_USERNAME;
+    const passwordHash = import.meta.env.VITE_DEFAULT_PASSWORD_HASH;
+    const salt = import.meta.env.VITE_DEFAULT_SALT;
+
+    // In development, provide fallback defaults if env vars are missing
+    if (isDevelopment && (!username || !passwordHash || !salt)) {
+        // Development fallback - DO NOT USE IN PRODUCTION
+        // These are insecure defaults for local development only
+        return [{
+            id: 'user-1',
+            username: username || 'admin',
+            passwordHash: passwordHash || 'dev-hash-placeholder',
+            salt: salt || 'dev-salt-placeholder',
+            role: 'admin' as const
+        }];
+    }
+
+    // In production, require environment variables
+    if (!username || !passwordHash || !salt) {
+        const missing = [];
+        if (!username) missing.push('VITE_DEFAULT_USERNAME');
+        if (!passwordHash) missing.push('VITE_DEFAULT_PASSWORD_HASH');
+        if (!salt) missing.push('VITE_DEFAULT_SALT');
+
+        throw new Error(
+            `Missing required environment variables: ${missing.join(', ')}. ` +
+            'Please set these in your .env file. Never commit actual credentials to source code.'
+        );
+    }
 
     return [{
         id: 'user-1',
         username,
         passwordHash,
-        salt
+        salt,
+        role: 'admin' as const // Default role for the first user
     }];
 };
 

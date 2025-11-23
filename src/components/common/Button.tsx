@@ -1,20 +1,46 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, memo } from 'react';
 import { t } from '../../../shared/translations';
 
+/**
+ * Props for the Button component
+ */
 interface ButtonProps {
+  /** Button content */
   children: ReactNode;
+  /** Click handler function */
   onClick?: () => void;
+  /** Visual style variant */
   variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'ghost';
+  /** Size of the button */
   size?: 'sm' | 'md' | 'lg';
+  /** Whether the button is disabled */
   disabled?: boolean;
+  /** Whether the button is in a loading state */
   loading?: boolean;
+  /** Whether the button should take full width */
   fullWidth?: boolean;
+  /** Additional CSS classes */
   className?: string;
+  /** HTML button type */
   type?: 'button' | 'submit' | 'reset';
+  /** Optional icon to display before the content */
   icon?: ReactNode;
 }
 
-const Button: React.FC<ButtonProps> = ({
+/**
+ * Button component with multiple variants and states
+ *
+ * Supports multiple visual styles, sizes, and states including loading.
+ * Includes proper accessibility attributes and keyboard navigation.
+ *
+ * @example
+ * ```tsx
+ * <Button variant="primary" onClick={handleClick} loading={isLoading}>
+ *   Click me
+ * </Button>
+ * ```
+ */
+const Button: React.FC<ButtonProps> = memo(({
   children,
   onClick,
   variant = 'primary',
@@ -26,19 +52,19 @@ const Button: React.FC<ButtonProps> = ({
   type = 'button',
   icon,
 }) => {
-  const baseClasses = 'font-medium rounded-lg transition-all duration-200 focus-visible-ring disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2';
+  const baseClasses = 'font-medium rounded-lg transition-all duration-200 focus-visible-ring disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 relative overflow-hidden';
 
   const variantClasses = {
-    primary: 'bg-accent text-accent-text hover:opacity-90 hover:scale-[1.02] active:scale-[0.98]',
-    secondary: 'bg-surface border border-border text-primary hover:bg-border hover:scale-[1.02] active:scale-[0.98]',
-    danger: 'bg-danger text-white hover:bg-danger/90 hover:scale-[1.02] active:scale-[0.98]',
-    success: 'bg-success text-white hover:bg-success/90 hover:scale-[1.02] active:scale-[0.98]',
-    ghost: 'bg-transparent text-primary hover:bg-surface/50 hover:scale-[1.02] active:scale-[0.98]',
+    primary: 'bg-accent text-accent-text hover:bg-accent-hover hover:shadow-md hover:scale-[1.02] active:scale-[0.98] shadow-sm',
+    secondary: 'bg-surface border border-border-strong text-primary hover:bg-border hover:border-border hover:shadow-sm hover:scale-[1.02] active:scale-[0.98]',
+    danger: 'bg-danger text-white hover:bg-danger/90 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] shadow-sm',
+    success: 'bg-success text-white hover:bg-success/90 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] shadow-sm',
+    ghost: 'bg-transparent text-primary hover:bg-surface hover:border-border hover:border hover:shadow-sm hover:scale-[1.02] active:scale-[0.98]',
   };
 
   const sizeClasses = {
     sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-base',
+    md: 'px-4 py-2.5 text-base',
     lg: 'px-6 py-3 text-lg',
   };
 
@@ -64,6 +90,22 @@ const Button: React.FC<ButtonProps> = ({
       )}
     </button>
   );
-};
+}, (prevProps, nextProps) => {
+  // Memo comparison: re-render only if props change
+  return (
+    prevProps.children === nextProps.children &&
+    prevProps.onClick === nextProps.onClick &&
+    prevProps.variant === nextProps.variant &&
+    prevProps.size === nextProps.size &&
+    prevProps.disabled === nextProps.disabled &&
+    prevProps.loading === nextProps.loading &&
+    prevProps.fullWidth === nextProps.fullWidth &&
+    prevProps.className === nextProps.className &&
+    prevProps.type === nextProps.type &&
+    prevProps.icon === nextProps.icon
+  );
+});
+
+Button.displayName = 'Button';
 
 export default Button;

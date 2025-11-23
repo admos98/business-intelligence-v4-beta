@@ -1,18 +1,19 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { t } from '../../shared/translations.ts';
-import { useShoppingStore } from '../store/useShoppingStore.ts';
-import Header from '../components/common/Header.tsx';
-import { MasterItem, Unit } from '../../shared/types.ts';
-import EditItemMasterModal from '../components/modals/EditItemMasterModal.tsx';
-import ItemPurchaseHistoryModal from '../components/modals/ItemPurchaseHistoryModal.tsx';
-import { useToast } from '../components/common/Toast.tsx';
-import CurrencyDisplay from '../components/common/CurrencyDisplay.tsx';
-import { toJalaliDateString } from '../../shared/jalali.ts';
-import Card from '../components/common/Card.tsx';
-import SkeletonLoader from '../components/common/SkeletonLoader.tsx';
+import { t } from '../../shared/translations';
+import { useShoppingStore } from '../store/useShoppingStore';
+import Header from '../components/common/Header';
+import { MasterItem, Unit } from '../../shared/types';
+import EditItemMasterModal from '../components/modals/EditItemMasterModal';
+import ItemPurchaseHistoryModal from '../components/modals/ItemPurchaseHistoryModal';
+import { useToast } from '../components/common/Toast';
+import CurrencyDisplay from '../components/common/CurrencyDisplay';
+import { toJalaliDateString } from '../../shared/jalali';
+import Card from '../components/common/Card';
+import SkeletonLoader from '../components/common/SkeletonLoader';
 import { Chart } from 'chart.js/auto';
 import { usePageActions } from '../contexts/PageActionsContext';
 import Button from '../components/common/Button';
+import { logger } from '../utils/logger';
 
 const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L14.732 3.732z" /></svg>;
 
@@ -53,7 +54,7 @@ const ItemTrendModal: React.FC<{ item: MasterItem, onClose: () => void }> = ({ i
   const [isAiLoading, setIsAiLoading] = useState(true);
 
   const chartRef = useRef<HTMLCanvasElement | null>(null);
-  const chartInstance = useRef<any | null>(null);
+  const chartInstance = useRef<Chart | null>(null);
 
   useEffect(() => { setIsOpen(true); }, []);
 
@@ -72,31 +73,11 @@ const ItemTrendModal: React.FC<{ item: MasterItem, onClose: () => void }> = ({ i
 
         const fetchAiInsight = async () => {
           try {
-            const response = await fetch('/api/gemini', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                task: 'analyzePriceTrend', // Specify the task for your API router
-                payload: {
-                  itemName: item.name,
-                  priceHistory: priceHistory,
-                }
-              }),
-            });
-
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.details || `Server error: ${response.statusText}`);
-            }
-
-            const result = await response.json();
-            // Your API returns the result in the 'data' property
-            setAiInsight(result.data);
-
+            const { analyzePriceTrend } = await import('../lib/gemini');
+            const insight = await analyzePriceTrend(item.name, priceHistory);
+            setAiInsight(insight);
           } catch (error) {
-            console.error("Failed to fetch AI insight:", error);
+            logger.error("Failed to fetch AI insight:", error);
             setAiInsight(t.aiError);
           } finally {
             setIsAiLoading(false);
@@ -146,7 +127,7 @@ const ItemTrendModal: React.FC<{ item: MasterItem, onClose: () => void }> = ({ i
           });
         }
       } catch (error) {
-        console.error('Error rendering price trend chart:', error);
+        logger.error('Error rendering price trend chart:', error);
       }
     }
     return () => {
@@ -273,15 +254,15 @@ const ItemsDashboard: React.FC<ItemsDashboardProps> = ({ onBack }) => {
                        <div className="space-y-3 border-t border-border pt-3 text-sm">
                             <div className="flex justify-between items-center">
                                 <span className="text-secondary">{t.lastPrice}:</span>
-                                <CurrencyDisplay value={item.lastPricePerUnit} className="font-semibold text-primary" />
+                                <CurrencyDisplay value={item.lastPricePerUnit ?? 0} className="font-semibold text-primary" />
                             </div>
                              <div className="flex justify-between items-center">
                                 <span className="text-secondary">{t.totalQuantity}:</span>
-                                <span className="font-semibold text-primary">{item.totalQuantity.toLocaleString('fa-IR')} {item.unit}</span>
+                                <span className="font-semibold text-primary">{(item.totalQuantity || 0).toLocaleString('fa-IR')} {item.unit}</span>
                             </div>
                             <div className="flex justify-between items-center">
                                 <span className="text-secondary">{t.totalSpend}:</span>
-                                 <CurrencyDisplay value={item.totalSpend} className="font-semibold text-accent" />
+                                 <CurrencyDisplay value={item.totalSpend || 0} className="font-semibold text-accent" />
                             </div>
                             <div className="flex justify-between items-center">
                                 <span className="text-secondary">{t.totalPurchases}:</span>

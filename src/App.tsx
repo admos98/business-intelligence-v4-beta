@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Dashboard from './pages/Dashboard';
 import ShoppingView from './pages/ShoppingView';
 import AnalysisDashboard from './pages/AnalysisDashboard';
@@ -9,26 +9,51 @@ import SellDashboard from './pages/SellDashboard';
 import RecipeDashboard from './pages/RecipeDashboard';
 import SellAnalysisDashboard from './pages/SellAnalysisDashboard';
 import FinancialDashboard from './pages/FinancialDashboard';
+import ChartOfAccountsPage from './pages/ChartOfAccountsPage';
+import GeneralLedgerPage from './pages/GeneralLedgerPage';
+import TrialBalancePage from './pages/TrialBalancePage';
+import BalanceSheetPage from './pages/BalanceSheetPage';
+import IncomeStatementPage from './pages/IncomeStatementPage';
+import CashFlowStatementPage from './pages/CashFlowStatementPage';
+import { TaxSettingsPage } from './pages/TaxSettingsPage';
+import { TaxReportsPage } from './pages/TaxReportsPage';
+import { CustomersPage } from './pages/CustomersPage';
+import { AgingReportsPage } from './pages/AgingReportsPage';
+import { AuditLogPage } from './pages/AuditLogPage';
+import { DataValidationPage } from './pages/DataValidationPage';
+import { BackupRestorePage } from './pages/BackupRestorePage';
+import { UserManagementPage } from './pages/UserManagementPage';
 import LoginPage from './pages/LoginPage';
 import Navbar from './components/common/Navbar';
 import { ToastProvider } from './components/common/Toast';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import LoadingSpinner from './components/common/LoadingSpinner';
+import { OfflineIndicator } from './components/common/OfflineIndicator';
 import { SafeSVG } from './components/common/SafeSVG';
 import { useTheme } from './hooks/useTheme';
 import { useShoppingStore } from './store/useShoppingStore';
+import { useSessionTimeout } from './hooks/useSessionTimeout';
 import { t } from '../shared/translations';
 import { logoSvg } from './assets/logo';
 import { PageActionsProvider, usePageActions } from './contexts/PageActionsContext';
 import './styles/animations.css';
 
-type View = 'dashboard' | 'list' | 'analysis' | 'vendors' | 'summary' | 'items' | 'sell' | 'recipes' | 'sellAnalysis' | 'financial';
+type View = 'dashboard' | 'list' | 'analysis' | 'vendors' | 'summary' | 'items' | 'sell' | 'recipes' | 'sellAnalysis' | 'financial' | 'chartOfAccounts' | 'generalLedger' | 'trialBalance' | 'balanceSheet' | 'incomeStatement' | 'cashFlow' | 'taxSettings' | 'taxReports' | 'customers' | 'agingReports' | 'auditLog' | 'dataValidation' | 'backupRestore' | 'userManagement';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('dashboard');
   const [activeListId, setActiveListId] = useState<string | null>(null);
   const { currentUser, login, logout, hydrateFromCloud, isHydrating } = useShoppingStore();
   useTheme();
+
+  // Session timeout: 30 minutes with 5 minute warning
+  useSessionTimeout({
+    timeoutMinutes: 30,
+    warningMinutes: 5,
+    onTimeout: () => {
+      setView('dashboard');
+    },
+  });
 
   useEffect(() => {
     if (currentUser) {
@@ -70,39 +95,73 @@ const App: React.FC = () => {
     switch (view) {
       case 'list':
         return activeListId ? (
-          <ShoppingView
-            listId={activeListId}
-            onBack={() => handleNavigate('dashboard')}
-            {...commonProps}
-          />
+          <ErrorBoundary>
+            <ShoppingView
+              listId={activeListId}
+              onBack={() => handleNavigate('dashboard')}
+              onLogout={handleLogout}
+              {...commonProps}
+            />
+          </ErrorBoundary>
         ) : null;
       case 'analysis':
-        return <AnalysisDashboard onBack={() => handleNavigate('dashboard')} {...commonProps} />;
+        return <ErrorBoundary><AnalysisDashboard onBack={() => handleNavigate('dashboard')} {...commonProps} /></ErrorBoundary>;
       case 'vendors':
-        return <VendorsDashboard onBack={() => handleNavigate('dashboard')} {...commonProps} />;
+        return <ErrorBoundary><VendorsDashboard onBack={() => handleNavigate('dashboard')} {...commonProps} /></ErrorBoundary>;
       case 'items':
-        return <ItemsDashboard onBack={() => handleNavigate('dashboard')} {...commonProps} />;
+        return <ErrorBoundary><ItemsDashboard onBack={() => handleNavigate('dashboard')} {...commonProps} /></ErrorBoundary>;
       case 'summary':
-        return <SummaryDashboard onBack={() => handleNavigate('dashboard')} {...commonProps} />;
+        return <ErrorBoundary><SummaryDashboard onBack={() => handleNavigate('dashboard')} {...commonProps} /></ErrorBoundary>;
       case 'sell':
-        return <SellDashboard onLogout={handleLogout} onViewSellAnalysis={() => handleNavigate('sellAnalysis')} />;
+        return <ErrorBoundary><SellDashboard onViewSellAnalysis={() => handleNavigate('sellAnalysis')} /></ErrorBoundary>;
       case 'recipes':
-        return <RecipeDashboard onLogout={handleLogout} />;
+        return <ErrorBoundary><RecipeDashboard /></ErrorBoundary>;
       case 'sellAnalysis':
-        return <SellAnalysisDashboard onLogout={handleLogout} />;
+        return <ErrorBoundary><SellAnalysisDashboard /></ErrorBoundary>;
       case 'financial':
-        return <FinancialDashboard onLogout={handleLogout} />;
+        return <ErrorBoundary><FinancialDashboard onLogout={handleLogout} onNavigate={(view) => handleNavigate(view as View)} /></ErrorBoundary>;
+      case 'chartOfAccounts':
+        return <ErrorBoundary><ChartOfAccountsPage onBack={() => handleNavigate('dashboard')} /></ErrorBoundary>;
+      case 'generalLedger':
+        return <ErrorBoundary><GeneralLedgerPage onBack={() => handleNavigate('dashboard')} /></ErrorBoundary>;
+      case 'trialBalance':
+        return <ErrorBoundary><TrialBalancePage onBack={() => handleNavigate('dashboard')} /></ErrorBoundary>;
+      case 'balanceSheet':
+        return <ErrorBoundary><BalanceSheetPage onBack={() => handleNavigate('dashboard')} /></ErrorBoundary>;
+      case 'incomeStatement':
+        return <ErrorBoundary><IncomeStatementPage onBack={() => handleNavigate('dashboard')} /></ErrorBoundary>;
+      case 'cashFlow':
+        return <ErrorBoundary><CashFlowStatementPage onBack={() => handleNavigate('dashboard')} /></ErrorBoundary>;
+      case 'taxSettings':
+        return <ErrorBoundary><TaxSettingsPage /></ErrorBoundary>;
+      case 'taxReports':
+        return <ErrorBoundary><TaxReportsPage /></ErrorBoundary>;
+      case 'customers':
+        return <ErrorBoundary><CustomersPage /></ErrorBoundary>;
+      case 'agingReports':
+        return <ErrorBoundary><AgingReportsPage /></ErrorBoundary>;
+      case 'auditLog':
+        return <ErrorBoundary><AuditLogPage /></ErrorBoundary>;
+      case 'dataValidation':
+        return <ErrorBoundary><DataValidationPage /></ErrorBoundary>;
+      case 'backupRestore':
+        return <ErrorBoundary><BackupRestorePage /></ErrorBoundary>;
+      case 'userManagement':
+        return <ErrorBoundary><UserManagementPage /></ErrorBoundary>;
       case 'dashboard':
       default:
         return (
-          <Dashboard
-            onSelectList={handleSelectList}
-            onViewAnalysis={() => handleNavigate('analysis')}
-            onViewVendors={() => handleNavigate('vendors')}
-            onViewItems={() => handleNavigate('items')}
-            onViewSummary={() => handleNavigate('summary')}
-            {...commonProps}
-          />
+          <ErrorBoundary>
+            <Dashboard
+              onSelectList={handleSelectList}
+              onViewAnalysis={() => handleNavigate('analysis')}
+              onViewVendors={() => handleNavigate('vendors')}
+              onViewItems={() => handleNavigate('items')}
+              onViewSummary={() => handleNavigate('summary')}
+              onLogout={handleLogout}
+              {...commonProps}
+            />
+          </ErrorBoundary>
         );
     }
   };
@@ -123,13 +182,14 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <ToastProvider>
         <PageActionsProvider>
-          <div className="min-h-screen bg-background text-primary font-sans flex md:flex-row transition-all">
+          <div className="min-h-screen bg-background text-primary font-sans flex flex-col md:flex-row transition-all">
             <AppContent
               view={view}
               onNavigate={handleNavigate}
               onLogout={handleLogout}
               renderView={renderView}
             />
+            <OfflineIndicator />
           </div>
         </PageActionsProvider>
       </ToastProvider>
@@ -149,11 +209,11 @@ const AppContent: React.FC<{
     <>
       <Navbar
         currentView={view}
-        onNavigate={onNavigate}
+        onNavigate={(viewId: string) => onNavigate(viewId as View)}
         onLogout={onLogout}
         pageActions={actions}
       />
-      <main className={`flex-1 w-full animate-fade-in transition-all duration-300`}>
+      <main className={`flex-1 w-full min-w-0 animate-fade-in transition-all duration-300 overflow-x-hidden`}>
         <Suspense fallback={<LoadingSpinner size="lg" className="min-h-screen" text="در حال بارگذاری..." />}>
           {renderView()}
         </Suspense>

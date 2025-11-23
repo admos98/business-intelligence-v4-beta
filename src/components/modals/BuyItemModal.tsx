@@ -1,10 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-// FIX: Add .ts extension to fix module import errors
-import { ShoppingItem, PaymentMethod, PaymentStatus } from '../../../shared/types.ts';
-import { t } from '../../../shared/translations.ts';
+import { ShoppingItem, PaymentMethod, PaymentStatus } from '../../../shared/types';
+import { t } from '../../../shared/translations';
 import CurrencyDisplay from '../common/CurrencyDisplay';
-// FIX: Add .ts extension to fix module import errors
-import { useShoppingStore } from '../../store/useShoppingStore.ts';
+import { useShoppingStore } from '../../store/useShoppingStore';
 
 
 interface BuyItemModalProps {
@@ -19,7 +17,7 @@ interface BuyItemModalProps {
 const BuyItemModal: React.FC<BuyItemModalProps> = ({ item, onClose, onConfirm }) => {
   const { vendors, categoryVendorMap, getLatestPurchaseInfo } = useShoppingStore();
   const [isOpen, setIsOpen] = useState(false);
-  const [purchasedAmount, setPurchasedAmount] = useState<number | ''>(item.amount);
+  const [purchasedAmount, setPurchasedAmount] = useState<number | ''>(item.amount ?? '');
   const [pricePerUnit, setPricePerUnit] = useState<number | ''>('');
   const [vendor, setVendor] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Card);

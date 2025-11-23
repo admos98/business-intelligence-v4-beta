@@ -249,12 +249,12 @@ async function handleGenerateExecutiveSummary(ai: GoogleGenAI, payload: { summar
     *   Total Spend: ${kpis.totalSpend.toLocaleString('fa-IR')} ${t.currency}
     *   Average Daily Spend: ${kpis.avgDailySpend.toLocaleString('fa-IR')} ${t.currency}
     *   Total Unique Items Purchased: ${kpis.totalItems.toLocaleString('fa-IR')}
-    *   Top Spending Category: ${kpis.topCategory?.name || 'N/A'} (${kpis.topCategory?.amount.toLocaleString('fa-IR')} ${t.currency})
-    *   Top Spending Vendor: ${kpis.topVendor?.name || 'N/A'} (${kpis.topVendor?.amount.toLocaleString('fa-IR')} ${t.currency})
+    *   Top Spending Category: ${kpis.topCategory?.name || 'N/A'} (${kpis.topCategory?.spend.toLocaleString('fa-IR')} ${t.currency})
+    *   Top Spending Vendor: ${kpis.topVendor?.name || 'N/A'} (${kpis.topVendor?.spend.toLocaleString('fa-IR')} ${t.currency})
 
     **Data Trends:**
-    *   Spending by Category (% of total): ${JSON.stringify(charts.spendingByCategory.labels.map((label, index) => ({ category: label, percentage: kpis.totalSpend > 0 ? ((charts.spendingByCategory.data[index] / kpis.totalSpend) * 100).toFixed(1) + '%' : '0%' })), null, 2)}
-    *   Spending Over Time (Trend): Analyze the daily spending data points to identify trends: ${JSON.stringify(charts.spendingOverTime.data)}
+    *   Spending by Category (% of total): ${JSON.stringify(charts.spendByCategory.labels.map((label: string, index: number) => ({ category: label, percentage: kpis.totalSpend > 0 ? ((charts.spendByCategory.data[index] / kpis.totalSpend) * 100).toFixed(1) + '%' : '0%' })), null, 2)}
+    *   Spending Over Time (Trend): Analyze the daily spending data points to identify trends: ${JSON.stringify(charts.spendOverTime.data)}
 
     **Your Task:**
     Provide a brief, insightful summary in Persian (max 3-4 paragraphs).
@@ -342,9 +342,9 @@ async function handleGetInflationInsight(ai: GoogleGenAI, payload: { inflationDa
     Based on the following inflation data for the cafe's purchases, provide a summary and one key recommendation.
 
     **Data:**
-    - Overall Price Change: ${inflationData.overallChange.toFixed(1)}%
-    - Top Item with Price Rise: ${inflationData.topItemRises.length > 0 ? `${inflationData.topItemRises[0].name} (+${inflationData.topItemRises[0].changePercentage.toFixed(0)}%)` : 'N/A'}
-    - Top Category with Price Rise: ${inflationData.topCategoryRises.length > 0 ? `${inflationData.topCategoryRises[0].name} (+${inflationData.topCategoryRises[0].changePercentage.toFixed(0)}%)` : 'N/A'}
+    - Overall Price Change: ${(inflationData.overallChange ?? 0).toFixed(1)}%
+    - Top Item with Price Rise: ${(inflationData.topItemRises && inflationData.topItemRises.length > 0) ? `${inflationData.topItemRises[0]?.itemName || inflationData.topItemRises[0]?.name || 'N/A'} (+${(inflationData.topItemRises[0]?.changePercentage || inflationData.topItemRises[0]?.percentageChange || 0).toFixed(0)}%)` : 'N/A'}
+    - Top Category with Price Rise: ${(inflationData.topCategoryRises && inflationData.topCategoryRises.length > 0) ? `${inflationData.topCategoryRises[0]?.name || 'N/A'} (+${(inflationData.topCategoryRises[0]?.changePercentage || inflationData.topCategoryRises[0]?.percentageChange || 0).toFixed(0)}%)` : 'N/A'}
 
     **Your Task:**
     1. Write a short, 2-3 sentence summary in Persian analyzing this data.

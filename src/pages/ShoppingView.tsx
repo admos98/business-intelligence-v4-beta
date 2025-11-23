@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect, memo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { ShoppingList, ShoppingItem, Unit, ItemStatus, PaymentMethod, PaymentStatus, OcrResult } from '../../shared/types';
 import { t } from '../../shared/translations';
 import Header from '../components/common/Header';
@@ -20,10 +20,8 @@ import PurchasedItemRow from '../components/common/PurchasedItemRow';
 import BulkActions from '../components/common/BulkActions';
 import AdvancedFilter from '../components/common/AdvancedFilter';
 import { usePageActions } from '../contexts/PageActionsContext';
+import { logger } from '../utils/logger';
 
-const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L14.732 3.732z" /></svg>;
-const DeleteIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
-const UndoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l4-4m-4 4l4 4" /></svg>;
 const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>;
 
 
@@ -44,7 +42,7 @@ interface StructuredReportData {
 
 
 const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
-  const { lists, updateList, addCustomData, allCategories, vendors, addOcrPurchase, findOrCreateVendor, updateCategoryVendorMap, getKnownItemNames, getItemInfo, getLatestPricePerUnit, updateItem } = useShoppingStore();
+  const { lists, updateList, addCustomData, allCategories, vendors, addOcrPurchase, findOrCreateVendor, updateCategoryVendorMap, getItemInfo, getLatestPricePerUnit, updateItem } = useShoppingStore();
   const list = useMemo(() => lists.find(l => l.id === listId), [lists, listId]);
 
   const [newItemName, setNewItemName] = useState('');
@@ -59,11 +57,12 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
   const [isOcrModalOpen, setIsOcrModalOpen] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [isPdfLoading, setIsPdfLoading] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<ItemStatus | 'all'>('all');
+  const [filterCategory, setFilterCategory] = useState<string>('');
+  const [showFilter, setShowFilter] = useState(false);
 
   const { addToast } = useToast();
   const vendorMap = useMemo(() => new Map<string, string>(vendors.map(v => [v.id, v.name])), [vendors]);
-
-  const knownItemNames = useMemo(() => getKnownItemNames(), [lists, getKnownItemNames]);
 
   const onUpdateList = useCallback((updatedList: ShoppingList) => {
     updateList(listId, updatedList);
@@ -99,6 +98,8 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
         id: `item-${Date.now()}`, name: newItemName.trim(), amount: Number(newItemAmount),
         unit: newItemUnit, status: ItemStatus.Pending, category: newItemCategory.trim() || t.other,
         estimatedPrice,
+        quantity: Number(newItemAmount),
+        paymentStatus: PaymentStatus.Paid,
       };
       addCustomData(newItem);
       onUpdateList({ ...list, items: [...list.items, newItem] });
@@ -197,9 +198,43 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
     setSelectedItemIds(newSelection);
   };
 
+  const pendingItems = useMemo(() => {
+    if (!list) return [];
+    return list.items.filter(item => item.status === ItemStatus.Pending);
+  }, [list]);
+
   const boughtItems = useMemo(() => list ? list.items.filter(item => item.status === ItemStatus.Bought) : [], [list]);
   const totalCost = useMemo(() => boughtItems.reduce((sum, item) => sum + (item.paidPrice || 0), 0), [boughtItems]);
   const totalDue = useMemo(() => boughtItems.filter(i => i.paymentStatus === PaymentStatus.Due).reduce((sum, item) => sum + (item.paidPrice || 0), 0), [boughtItems]);
+
+  // Filter items based on active filters
+  const displayPendingItems = useMemo(() => {
+    if (filterStatus === 'all' || filterStatus === ItemStatus.Pending) {
+      return filterCategory ? pendingItems.filter(item => item.category === filterCategory) : pendingItems;
+    }
+    return [];
+  }, [pendingItems, filterStatus, filterCategory]);
+
+  const displayBoughtItems = useMemo(() => {
+    if (filterStatus === 'all' || filterStatus === ItemStatus.Bought) {
+      return filterCategory ? boughtItems.filter(item => item.category === filterCategory) : boughtItems;
+    }
+    return [];
+  }, [boughtItems, filterStatus, filterCategory]);
+
+  const groupItemsByCategory = (items: ShoppingItem[]): Record<string, ShoppingItem[]> => {
+    return items.reduce((acc, item) => {
+      const category = item.category || t.other;
+      if (!acc[category]) {
+        acc[category] = [];
+      }
+      acc[category].push(item);
+      return acc;
+    }, {} as Record<string, ShoppingItem[]>);
+  };
+
+  const groupedPendingItems = useMemo(() => groupItemsByCategory(displayPendingItems), [displayPendingItems]);
+  const totalEstimatedCost = useMemo(() => displayPendingItems.reduce((sum, item) => sum + (item.estimatedPrice || 0), 0), [displayPendingItems]);
 
   const groupAndSortPurchasedItems = (items: ShoppingItem[], vendors: Map<string, string>): StructuredReportData[] => {
     const categoryMap: Record<string, Record<string, ShoppingItem[]>> = {};
@@ -259,12 +294,12 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
       );
       await exportComponentAsPdf(reportComponent, `${list.name}.pdf`);
     } catch (error) {
-        console.error("PDF generation or structuring failed:", error);
+        logger.error("PDF generation or structuring failed:", error);
         addToast((error as Error).message || "An unknown error occurred.", "error");
     } finally {
         setIsPdfLoading(false);
     }
-  }, [list, boughtItems, vendorMap, totalCost, totalDue, addToast]);
+  }, [list, boughtItems, vendorMap, totalCost, totalDue, addToast, groupAndSortPurchasedItems]);
 
   const handleExportCsv = useCallback(() => {
     if (!list) {
@@ -323,22 +358,6 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
       addToast(t.exportJsonSuccess, 'success');
   }, [list, vendorMap, addToast]);
 
-  const pendingItems = useMemo(() => list ? list.items.filter(item => item.status === ItemStatus.Pending) : [], [list]);
-
-  const groupItemsByCategory = (items: ShoppingItem[]): Record<string, ShoppingItem[]> => {
-    return items.reduce((acc, item) => {
-      const category = item.category || t.other;
-      if (!acc[category]) {
-        acc[category] = [];
-      }
-      acc[category].push(item);
-      return acc;
-    }, {} as Record<string, ShoppingItem[]>);
-  };
-
-  const groupedPendingItems = useMemo(() => groupItemsByCategory(pendingItems), [pendingItems]);
-  const groupedBoughtItems = useMemo(() => groupItemsByCategory(boughtItems), [boughtItems]);
-  const totalEstimatedCost = useMemo(() => pendingItems.reduce((sum, item) => sum + (item.estimatedPrice || 0), 0), [pendingItems]);
 
   const { setActions } = usePageActions();
 
@@ -371,7 +390,7 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
 
   return (
     <div>
-      <Header title={list?.name || t.shoppingList} onBack={onBack} backText={t.backToDashboard} hideMenu={true} />
+      <Header title={list?.name || t.myShoppingLists} onBack={onBack} backText={t.backToDashboard} hideMenu={true} />
 
       <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto pb-24">
        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -424,11 +443,59 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
                 </div>
             </div>
             <div className="lg:col-span-2 space-y-8">
+                 {/* Filter Section */}
+                 <Card>
+                   <div className="flex items-center justify-between mb-4">
+                     <h3 className="text-lg font-bold text-primary">فیلتر</h3>
+                     <Button
+                       variant="secondary"
+                       size="sm"
+                       onClick={() => setShowFilter(!showFilter)}
+                     >
+                       {showFilter ? 'بستن فیلتر' : 'فیلتر پیشرفته'}
+                     </Button>
+                   </div>
+                   {showFilter && (
+                     <AdvancedFilter
+                       title="فیلتر اقلام"
+                       filters={[
+                         {
+                           id: 'status',
+                           label: 'وضعیت',
+                           type: 'select',
+                           value: filterStatus,
+                           onChange: (value) => setFilterStatus((value || 'all') as ItemStatus | 'all'),
+                           options: [
+                             { id: 'all', label: 'همه', value: 'all' },
+                             { id: 'pending', label: t.inProgress, value: ItemStatus.Pending },
+                             { id: 'bought', label: t.completed, value: ItemStatus.Bought },
+                           ],
+                         },
+                         {
+                           id: 'category',
+                           label: 'دسته‌بندی',
+                           type: 'select',
+                           value: filterCategory,
+                           onChange: (value) => setFilterCategory((value || '') as string),
+                           options: [
+                             { id: 'all-cat', label: 'همه', value: '' },
+                             ...allCategories().map(cat => ({ id: cat, label: cat, value: cat })),
+                           ],
+                         },
+                       ]}
+                       onReset={() => {
+                         setFilterStatus('all');
+                         setFilterCategory('');
+                       }}
+                     />
+                   )}
+                 </Card>
+
                  <section className="animate-fade-in">
                     <h2 className="text-xl font-bold text-primary border-b border-border pb-2 mb-4 animate-fade-in-down">
-                      {t.toBuy} ({pendingItems.length})
+                      {t.toBuy} ({displayPendingItems.length})
                     </h2>
-                    {pendingItems.length > 0 ? (
+                    {displayPendingItems.length > 0 ? (
                         <div className="space-y-6">
                             {Object.entries(groupedPendingItems)
                                 .sort((a, b) => a[0].localeCompare(b[0], 'fa'))
@@ -456,11 +523,11 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
 
                 <section className="animate-fade-in">
                     <h2 className="text-xl font-bold text-primary border-b border-border pb-2 mb-4 animate-fade-in-down">
-                      {t.purchased} ({boughtItems.length})
+                      {t.purchased} ({displayBoughtItems.length})
                     </h2>
-                    {boughtItems.length > 0 ? (
+                    {displayBoughtItems.length > 0 ? (
                     <div className="space-y-6">
-                         {Object.entries(groupedBoughtItems)
+                         {Object.entries(groupItemsByCategory(displayBoughtItems))
                                 .sort((a, b) => a[0].localeCompare(b[0], 'fa'))
                                 .map(([category, items]: [string, ShoppingItem[]]) => (
                                 <div key={category}>
@@ -502,7 +569,7 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ listId, onBack }) => {
       {itemToBuy && <BuyItemModal item={itemToBuy} onClose={() => setItemToBuy(null)} onConfirm={handleConfirmBuy} />}
       {itemToEdit && <EditItemModal item={itemToEdit} onClose={() => setItemToEdit(null)} onSave={handleSaveEdit} />}
       {itemToEditPurchased && <EditPurchasedItemModal item={itemToEditPurchased} onClose={() => setItemToEditPurchased(null)} onSave={handleSavePurchasedItem} />}
-      {isBulkBuyModalOpen && <BulkBuyModal items={pendingItems.filter(i => selectedItemIds.has(i.id))} onClose={() => setIsBulkBuyModalOpen(false)} onConfirm={handleConfirmBulkBuy} />}
+      {isBulkBuyModalOpen && <BulkBuyModal items={displayPendingItems.filter(i => selectedItemIds.has(i.id))} onClose={() => setIsBulkBuyModalOpen(false)} onConfirm={handleConfirmBulkBuy} />}
       {isOcrModalOpen && <OcrImportModal onClose={() => setIsOcrModalOpen(false)} onConfirm={handleAddOcrItems} />}
 
     </div>
@@ -566,7 +633,7 @@ const ShoppingReportForPdf: React.FC<{ list: ShoppingList, structuredData: Struc
                     {vendorData.items.map(item => (
                       <tr key={item.id} className={item.paymentStatus === PaymentStatus.Due ? 'unpaid-row' : ''}>
                         <td>{item.name}</td>
-                        <td>{`${item.purchasedAmount?.toLocaleString('fa-IR') || item.amount.toLocaleString('fa-IR')} ${item.unit}`}</td>
+                        <td>{`${item.purchasedAmount?.toLocaleString('fa-IR') || (item.amount || 0).toLocaleString('fa-IR')} ${item.unit}`}</td>
                         <td>{item.paidPrice?.toLocaleString('fa-IR')} {t.currency}</td>
                         <td>{item.paymentStatus || ''}</td>
                       </tr>

@@ -15,8 +15,8 @@ interface AdvancedFilterProps {
     label: string;
     type: 'select' | 'multiselect' | 'date' | 'dateRange' | 'number' | 'numberRange';
     options?: FilterOption[];
-    value?: any;
-    onChange: (value: any) => void;
+    value?: string | number | string[] | [Date, Date] | [number, number];
+    onChange: (value: string | number | string[] | [Date, Date] | [number, number] | undefined) => void;
   }>;
   onReset?: () => void;
   onApply?: () => void;
@@ -77,7 +77,7 @@ const AdvancedFilter: React.FC<AdvancedFilterProps> = ({
                     </label>
                     {filter.type === 'select' && (
                       <select
-                        value={filter.value || ''}
+                        value={typeof filter.value === 'string' ? filter.value : ''}
                         onChange={(e) => filter.onChange(e.target.value)}
                         className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
                       >
@@ -95,10 +95,10 @@ const AdvancedFilter: React.FC<AdvancedFilterProps> = ({
                           <label key={opt.id} className="flex items-center gap-2 p-2 bg-background rounded hover:bg-surface cursor-pointer">
                             <input
                               type="checkbox"
-                              checked={(filter.value || []).includes(opt.value)}
+                              checked={Array.isArray(filter.value) && filter.value.every(v => typeof v === 'string') ? (filter.value as string[]).includes(opt.value) : false}
                               onChange={(e) => {
-                                const current = filter.value || [];
-                                const updated = e.target.checked
+                                const current = Array.isArray(filter.value) && filter.value.every(v => typeof v === 'string') ? (filter.value as string[]) : [];
+                                const updated: string[] = e.target.checked
                                   ? [...current, opt.value]
                                   : current.filter((v: string) => v !== opt.value);
                                 filter.onChange(updated);
@@ -113,7 +113,7 @@ const AdvancedFilter: React.FC<AdvancedFilterProps> = ({
                     {filter.type === 'date' && (
                       <input
                         type="date"
-                        value={filter.value || ''}
+                        value={typeof filter.value === 'string' ? filter.value : ''}
                         onChange={(e) => filter.onChange(e.target.value)}
                         className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
                       />
@@ -121,7 +121,7 @@ const AdvancedFilter: React.FC<AdvancedFilterProps> = ({
                     {filter.type === 'number' && (
                       <input
                         type="number"
-                        value={filter.value || ''}
+                        value={typeof filter.value === 'number' ? filter.value : ''}
                         onChange={(e) => filter.onChange(parseFloat(e.target.value) || 0)}
                         className="w-full px-3 py-2 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
                       />

@@ -5,22 +5,20 @@ import { Chart } from 'chart.js/auto';
 
 // --- CORRECTED IMPORTS ---
 // FIX: Changed 'Item' to 'ShoppingItem' as defined in your types.ts
-import { ItemStatus, InflationData, InflationDetail, ShoppingList, ShoppingItem, Vendor } from '../../shared/types.ts';
-import Header from '../components/common/Header.tsx';
-import Card from '../components/common/Card.tsx';
-import SkeletonLoader from '../components/common/SkeletonLoader.tsx';
-import StatCard from '../components/common/StatCard.tsx';
-import TrendIndicator from '../components/common/TrendIndicator.tsx';
-import LoadingSpinner from '../components/common/LoadingSpinner.tsx';
-import { t } from '../../shared/translations.ts';
-import { useShoppingStore } from '../store/useShoppingStore.ts';
-import CurrencyDisplay from '../components/common/CurrencyDisplay.tsx';
-import { parseJalaliDate, toJalaliDateString } from '../../shared/jalali.ts';
-// FIX: 'useToast' is unused, so it can be commented out or removed.
-// import { useToast } from '../components/common/Toast.tsx';
+import { ItemStatus, InflationData, InflationDetail, ShoppingList, ShoppingItem, Vendor } from '../../shared/types';
+import Header from '../components/common/Header';
+import Card from '../components/common/Card';
+import SkeletonLoader from '../components/common/SkeletonLoader';
+import StatCard from '../components/common/StatCard';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+import { t } from '../../shared/translations';
+import { useShoppingStore } from '../store/useShoppingStore';
+import CurrencyDisplay from '../components/common/CurrencyDisplay';
+import { parseJalaliDate, toJalaliDateString } from '../../shared/jalali';
 
 // FIX: Importing from the correct file that contains the Gemini AI functions.
-import { getAnalysisInsights, getInflationInsight } from '../lib/gemini.ts';
+import { getAnalysisInsights, getInflationInsight } from '../lib/gemini';
+import { logger } from '../utils/logger';
 
 // --- TYPE DEFINITIONS ---
 type Metric = 'totalSpend' | 'totalQuantity' | 'uniquePurchases' | 'avgPricePerUnit';
@@ -41,8 +39,8 @@ interface AnalysisConfig {
 
 interface ProcessedData {
     kpis: Record<string, number>;
-    chartData: { labels: string[], datasets: any[] };
-    tableData: Record<string, any>[];
+    chartData: { labels: string[], datasets: Array<{ label: string; data: number[]; backgroundColor?: string | string[]; borderColor?: string; tension?: number }> };
+    tableData: Record<string, string | number>[];
 }
 
 const METRIC_LABELS: Record<Metric, string> = {
@@ -175,13 +173,13 @@ const InflationTracker: React.FC = () => {
                         type: 'line',
                         data: {
                             labels: inflationData.priceIndexHistory.map((p) => p.period),
-                            datasets: [{ data: inflationData.priceIndexHistory.map((p) => p.priceIndex), borderColor: accentColor, backgroundColor: accentSoftColor, fill: true, tension: 0.3 }]
+                            datasets: [{ data: inflationData.priceIndexHistory.map((p) => p.priceIndex ?? 0).filter((v): v is number => v !== undefined), borderColor: accentColor, backgroundColor: accentSoftColor, fill: true, tension: 0.3 }]
                         },
                         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
                     });
                 }
             } catch (error) {
-                console.error('Error rendering inflation chart:', error);
+                logger.error('Error rendering inflation chart:', error);
             }
         }
         return () => {
@@ -203,7 +201,7 @@ const InflationTracker: React.FC = () => {
       </div>
     );
 
-    const change = inflationData.overallChange;
+    const change = inflationData.overallChange ?? 0;
     const changeText = change > 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`;
 
     return (
@@ -228,10 +226,10 @@ const InflationTracker: React.FC = () => {
             </Card>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                  <Card title={t.topPriceRisesItems || "بیشترین افزایش قیمت اقلام"} className="animate-fade-in">
-                    <RiseList data={inflationData.topItemRises} />
+                    <RiseList data={inflationData.topItemRises ?? []} />
                  </Card>
                  <Card title={t.topPriceRisesCategories || "بیشترین افزایش قیمت دسته‌ها"} className="animate-fade-in">
-                     <RiseList data={inflationData.topCategoryRises} />
+                     <RiseList data={inflationData.topCategoryRises ?? []} />
                  </Card>
              </div>
         </div>
@@ -250,13 +248,18 @@ const RiseList: React.FC<{data: InflationDetail[]}> = ({data}) => {
                   className="flex justify-between items-center text-sm p-3 rounded-lg bg-background hover:bg-surface transition-colors animate-fade-in"
                   style={{ animationDelay: `${idx * 50}ms` }}
                 >
-                    <span className="font-medium text-primary truncate flex-1">{item.name}</span>
+                    <span className="font-medium text-primary truncate flex-1">{item.name || item.itemName}</span>
                     <div className="text-right flex-shrink-0 mr-3">
-                        <span className={`font-bold text-sm ${item.changePercentage > 0 ? 'text-danger' : 'text-success'}`}>
-                             {item.changePercentage > 0 ? '▲' : '▼'} {Math.abs(item.changePercentage).toFixed(1)}%
-                        </span>
+                        {(() => {
+                            const changePct = item.changePercentage ?? item.percentageChange ?? 0;
+                            return (
+                                <span className={`font-bold text-sm ${changePct > 0 ? 'text-danger' : 'text-success'}`}>
+                                    {changePct > 0 ? '▲' : '▼'} {Math.abs(changePct).toFixed(1)}%
+                                </span>
+                            );
+                        })()}
                         <div className="text-xs text-secondary mt-1">
-                            <CurrencyDisplay value={item.startPrice} /> &rarr; <CurrencyDisplay value={item.endPrice} />
+                            <CurrencyDisplay value={item.startPrice ?? item.oldPrice ?? 0} /> &rarr; <CurrencyDisplay value={item.endPrice ?? item.newPrice ?? 0} />
                         </div>
                     </div>
                 </li>
@@ -393,18 +396,24 @@ const CustomReports: React.FC = () => {
             groupedMap.set('All Data', filteredItems);
         }
 
-        const tableData: Record<string, any>[] = [];
+        interface TableRow {
+            [key: string]: string | number;
+        }
+        const tableData: TableRow[] = [];
         const labels = Array.from(groupedMap.keys()).sort((a,b) => a.localeCompare(b, 'fa'));
 
         labels.forEach(key => {
             const groupItems = groupedMap.get(key)!;
-            const row: Record<string, any> = { [config.groupBy]: key };
+            const row: TableRow = { [config.groupBy]: key };
             if(config.metrics.includes('totalSpend')) row.totalSpend = groupItems.reduce((s: number, i: ShoppingItem) => s + (i.paidPrice || 0), 0);
             if(config.metrics.includes('totalQuantity')) row.totalQuantity = groupItems.reduce((s: number, i: ShoppingItem) => s + (i.purchasedAmount || i.amount || 0), 0);
             if(config.metrics.includes('uniquePurchases')) row.uniquePurchases = groupItems.length;
             if(config.metrics.includes('avgPricePerUnit')) {
                  const totalVal = groupItems.reduce((s: number, i: ShoppingItem) => s + (i.paidPrice || 0), 0);
-                 const totalQty = groupItems.reduce((s: number, i: ShoppingItem) => s + (i.purchasedAmount || i.amount || 1), 0);
+                 const totalQty = groupItems.reduce((s: number, i: ShoppingItem) => {
+                   const qty = i.purchasedAmount || i.amount || 0;
+                   return s + (qty > 0 ? qty : 0);
+                 }, 0);
                  row.avgPricePerUnit = totalQty > 0 ? totalVal / totalQty : 0;
             }
             tableData.push(row);
@@ -413,8 +422,14 @@ const CustomReports: React.FC = () => {
         const styles = getComputedStyle(document.documentElement);
         const chartColors = [styles.getPropertyValue('--color-chart-1').trim(), styles.getPropertyValue('--color-chart-2').trim(), styles.getPropertyValue('--color-chart-3').trim(), styles.getPropertyValue('--color-chart-4').trim(), styles.getPropertyValue('--color-chart-5').trim()];
         const datasets = config.metrics.map((metric, index) => ({
-            label: METRIC_LABELS[metric], data: tableData.map(d => d[metric]),
-            backgroundColor: chartColors[index % chartColors.length], borderColor: chartColors[index % chartColors.length], tension: 0.1,
+            label: METRIC_LABELS[metric],
+            data: tableData.map(d => {
+                const value = d[metric];
+                return typeof value === 'number' ? value : 0;
+            }),
+            backgroundColor: chartColors[index % chartColors.length],
+            borderColor: chartColors[index % chartColors.length],
+            tension: 0.1,
         }));
         setProcessedData({ kpis, chartData: { labels, datasets }, tableData });
         setIsProcessing(false);
@@ -433,7 +448,7 @@ const CustomReports: React.FC = () => {
               chartInstance.current = new Chart(ctx, { type: chartType, data: processedData.chartData, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } } });
             }
         } catch (error) {
-            console.error('Error rendering custom report chart:', error);
+            logger.error('Error rendering custom report chart:', error);
         }
     }
      return () => {
@@ -502,10 +517,14 @@ const CustomReports: React.FC = () => {
   );
 };
 
-const DataTable: React.FC<{data: Record<string, any>[], groupBy: GroupBy | 'none', metrics: Metric[]}> = ({data, groupBy, metrics}) => {
+interface TableRow {
+    [key: string]: string | number;
+}
+
+const DataTable: React.FC<{data: TableRow[], groupBy: GroupBy | 'none', metrics: Metric[]}> = ({data, groupBy, metrics}) => {
     if (data.length === 0) return <p className="text-center text-secondary py-4">{t.noDataForPeriod}</p>
     const headers = [GROUP_BY_LABELS[groupBy], ...metrics.map(m => METRIC_LABELS[m])];
-    const formatValue = (key: string, value: any) => {
+    const formatValue = (key: string, value: string | number) => {
         if (typeof value !== 'number') return value;
         if (key === 'totalQuantity' || key === 'uniquePurchases') return value.toLocaleString('fa-IR');
         return <CurrencyDisplay value={value} className="text-sm" />

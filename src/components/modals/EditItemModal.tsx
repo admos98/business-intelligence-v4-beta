@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-// FIX: Add .ts extension to fix module import errors
-import { ShoppingItem, Unit } from '../../../shared/types.ts';
-import { t } from '../../../shared/translations.ts';
-import { useShoppingStore } from '../../store/useShoppingStore.ts';
+import { ShoppingItem, Unit } from '../../../shared/types';
+import { t } from '../../../shared/translations';
+import { useShoppingStore } from '../../store/useShoppingStore';
 
 interface EditItemModalProps {
   item: ShoppingItem;
@@ -14,7 +13,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, onClose, onSave }) 
   const { allCategories } = useShoppingStore();
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState(item.name);
-  const [amount, setAmount] = useState<number | ''>(item.amount);
+  const [amount, setAmount] = useState<number | ''>(item.amount ?? '');
   const [unit, setUnit] = useState(item.unit);
   const [category, setCategory] = useState(item.category);
 

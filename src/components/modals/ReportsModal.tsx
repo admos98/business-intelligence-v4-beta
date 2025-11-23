@@ -1,15 +1,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
-// FIX: Add .ts extension to fix module import errors
-import { AggregatedShoppingItem, ItemStatus, PaymentStatus } from '../../../shared/types.ts';
-import { t } from '../../../shared/translations.ts';
-import { useShoppingStore } from '../../store/useShoppingStore.ts';
+import { AggregatedShoppingItem, ItemStatus, PaymentStatus } from '../../../shared/types';
+import { t } from '../../../shared/translations';
+import { useShoppingStore } from '../../store/useShoppingStore';
 import CurrencyDisplay from '../common/CurrencyDisplay';
-import { parseJalaliDate, toJalaliDateString } from '../../../shared/jalali.ts';
-// FIX: Add .ts extension to fix module import errors
-import { generateReportSummary } from '../../lib/gemini.ts';
+import { parseJalaliDate, toJalaliDateString } from '../../../shared/jalali';
+import { generateReportSummary } from '../../lib/gemini';
 import JalaliCalendar from '../common/JalaliCalendar';
 import { exportComponentAsPdf } from '../../lib/pdfExport';
 import { useToast } from '../common/Toast';
+import { logger } from '../../utils/logger';
 
 interface ReportsModalProps {
   onClose: () => void;
@@ -86,9 +85,11 @@ const ReportsModal: React.FC<ReportsModalProps> = ({ onClose }) => {
                   totalPrice: 0
               });
             }
-            const existing = aggregationMap.get(key)!;
-            existing.totalAmount += item.purchasedAmount ?? item.amount;
-            existing.totalPrice += item.paidPrice ?? 0;
+            const existing = aggregationMap.get(key);
+            if (existing) {
+              existing.totalAmount += item.purchasedAmount ?? item.amount ?? 0;
+              existing.totalPrice += item.paidPrice ?? 0;
+            }
           }
       }));
 
@@ -160,7 +161,7 @@ const ReportsModal: React.FC<ReportsModalProps> = ({ onClose }) => {
         );
         await exportComponentAsPdf(reportComponent, `${t.reportsModalTitle}_${startDate.replace(/\//g, '-')}-${endDate.replace(/\//g, '-')}.pdf`);
     } catch (error) {
-        console.error("PDF generation failed:", error);
+        logger.error("PDF generation failed:", error);
         addToast((error as Error).message || "An unknown error occurred during PDF generation.", "error");
     } finally {
         setIsGeneratingPdf(false);

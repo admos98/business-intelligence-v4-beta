@@ -1,10 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-// FIX: Add .ts extension to fix module import errors
-import { ShoppingItem, PaymentMethod, PaymentStatus } from '../../../shared/types.ts';
-import { t } from '../../../shared/translations.ts';
+import { ShoppingItem, PaymentMethod, PaymentStatus } from '../../../shared/types';
+import { t } from '../../../shared/translations';
 import CurrencyDisplay from '../common/CurrencyDisplay';
-// FIX: Add .ts extension to fix module import errors
-import { useShoppingStore } from '../../store/useShoppingStore.ts';
+import { useShoppingStore } from '../../store/useShoppingStore';
 
 
 interface EditPurchasedItemModalProps {
@@ -17,7 +15,7 @@ const EditPurchasedItemModal: React.FC<EditPurchasedItemModalProps> = ({ item, o
   const { vendors, findOrCreateVendor } = useShoppingStore();
   const [isOpen, setIsOpen] = useState(false);
 
-  const [purchasedAmount, setPurchasedAmount] = useState<number | ''>(item.purchasedAmount || item.amount);
+  const [purchasedAmount, setPurchasedAmount] = useState<number | ''>(item.purchasedAmount ?? item.amount ?? '');
   const [pricePerUnit, setPricePerUnit] = useState<number | ''>(
     (item.paidPrice && item.purchasedAmount) ? item.paidPrice / item.purchasedAmount : ''
   );

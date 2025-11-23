@@ -20,7 +20,7 @@ const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w
 
 const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => {
   const store = useShoppingStore();
-  const { posItems, getPOSItemsByCategory, getFrequentPOSItems, addSellTransaction, addPOSItem, updatePOSItem, deletePOSItem, updateSellTransaction, deleteSellTransaction, addPOSCategory, posCategories: storePosCategories, startShift, endShift, getActiveShift, getShiftTransactions } = store;
+  const { posItems, getPOSItemsByCategory, getFrequentPOSItems, addSellTransaction, addPOSItem, updatePOSItem, deletePOSItem, updateSellTransaction, deleteSellTransaction, addPOSCategory, posCategories: storePosCategories, startShift, endShift, getActiveShift, getShiftTransactions, taxSettings, calculateTaxForAmount } = store;
 
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [cart, setCart] = useState<Map<string, { posItemId: string; name: string; quantity: number; unitPrice: number; customizations: Record<string, string | number | { optionId: string; amount: number }> }>>(new Map());
@@ -100,7 +100,33 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
 
   // Convert cart Map to array with keys for stable React keys
   const cartArray = useMemo(() => Array.from(cart.entries()).map(([key, value]) => ({ key, ...value })), [cart]);
-  const cartTotal = cartArray.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+
+  // Calculate cart total with tax
+  const cartSubtotal = cartArray.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+  const cartTaxInfo = useMemo(() => {
+    if (!taxSettings.enabled) {
+      return { subtotal: cartSubtotal, taxAmount: 0, total: cartSubtotal };
+    }
+
+    // Calculate tax for each item
+    let totalTax = 0;
+    cartArray.forEach(cartItem => {
+      const posItem = posItems.find(p => p.id === cartItem.posItemId);
+      if (posItem && (posItem.isTaxable !== false)) { // Tax by default unless explicitly disabled
+        const itemTotal = cartItem.quantity * cartItem.unitPrice;
+        const taxCalc = calculateTaxForAmount(itemTotal, posItem.taxRateId);
+        totalTax += taxCalc.taxAmount;
+      }
+    });
+
+    return {
+      subtotal: cartSubtotal,
+      taxAmount: totalTax,
+      total: cartSubtotal + totalTax
+    };
+  }, [cartArray, cartSubtotal, taxSettings, posItems, calculateTaxForAmount]);
+
+  const cartTotal = cartTaxInfo.total;
   const finalTotal = Math.max(0, cartTotal - discountAmount);
 
   const handleAddToCart = (posItem: POSItem, opts?: { variants?: Record<string, string | number | { optionId: string; amount: number }>; customizations?: Record<string, string | number | { optionId: string; amount: number }>; quantity?: number }) => {
@@ -497,15 +523,36 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       }
     }
 
-    const items: SellTransactionItem[] = cartArray.map(cartItem => ({
-      id: `item-${Date.now()}-${Math.random()}`,
-      posItemId: cartItem.posItemId,
-      name: cartItem.name,
-      quantity: refundMode ? -Math.abs(cartItem.quantity) : cartItem.quantity, // Negative quantity for refunds
-      unitPrice: cartItem.unitPrice,
-      totalPrice: refundMode ? -(cartItem.quantity * cartItem.unitPrice) : (cartItem.quantity * cartItem.unitPrice),
-      customizationChoices: cartItem.customizations,
-    }));
+    // Calculate items with tax information
+    const items: SellTransactionItem[] = cartArray.map(cartItem => {
+      const posItem = posItems.find(p => p.id === cartItem.posItemId);
+      const itemSubtotal = cartItem.quantity * cartItem.unitPrice;
+      let itemTaxAmount = 0;
+      let itemTaxRate = 0;
+      let isTaxable = false;
+
+      if (taxSettings.enabled && posItem && (posItem.isTaxable !== false)) {
+        const taxCalc = calculateTaxForAmount(itemSubtotal, posItem.taxRateId);
+        itemTaxAmount = taxCalc.taxAmount;
+        itemTaxRate = taxCalc.taxRate;
+        isTaxable = true;
+      }
+
+      const itemTotal = itemSubtotal + itemTaxAmount;
+
+      return {
+        id: `item-${Date.now()}-${Math.random()}`,
+        posItemId: cartItem.posItemId,
+        name: cartItem.name,
+        quantity: refundMode ? -Math.abs(cartItem.quantity) : cartItem.quantity,
+        unitPrice: cartItem.unitPrice,
+        totalPrice: refundMode ? -itemTotal : itemTotal,
+        customizationChoices: cartItem.customizations,
+        taxAmount: itemTaxAmount > 0 ? (refundMode ? -itemTaxAmount : itemTaxAmount) : undefined,
+        taxRate: itemTaxRate > 0 ? itemTaxRate : undefined,
+        isTaxable: isTaxable ? true : undefined,
+      };
+    });
 
     // Calculate split payments total (excluding Staff payments which are always 0)
     const splitTotal = splitPayments.reduce((sum, split) => {
@@ -527,6 +574,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
 
     const transaction: Omit<SellTransaction, 'id' | 'date'> = {
       items,
+      subtotal: taxSettings.enabled ? (refundMode ? -cartTaxInfo.subtotal : cartTaxInfo.subtotal) : undefined,
+      taxAmount: taxSettings.enabled && cartTaxInfo.taxAmount > 0 ? (refundMode ? -cartTaxInfo.taxAmount : cartTaxInfo.taxAmount) : undefined,
       totalAmount: finalAmount,
       paymentMethod,
       splitPayments: useSplitPayment && hasValidSplit ? splitPayments.map(sp => ({
@@ -1175,6 +1224,10 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
                   {currentCategoryItems.map((item, idx) => {
                     const inCart = Array.from(cart.keys()).some(k => k.startsWith(item.id));
+                    // Find cart item for this POSItem to get display name/price if in cart
+                    const cartItem = cartArray.find(c => c.posItemId === item.id);
+                    const displayName = cartItem?.name || item.name;
+                    const displayPrice = cartItem?.unitPrice ?? item.sellPrice;
                     return (
                       <div
                         key={item.id}
@@ -1198,8 +1251,8 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                               : 'bg-surface border-border hover:border-accent hover:bg-accent/5'
                           }`}
                         >
-                          <div className="font-bold text-base text-primary mb-1 truncate">{(item as any).displayName || item.name}</div>
-                          <div className="text-sm text-accent font-semibold"><CurrencyDisplay value={(item as any).displayPrice ?? item.sellPrice} /></div>
+                          <div className="font-bold text-base text-primary mb-1 truncate">{displayName}</div>
+                          <div className="text-sm text-accent font-semibold"><CurrencyDisplay value={displayPrice} /></div>
                           {inCart && (
                             <div className="text-xs text-accent mt-1">
                               {cartArray.filter(c => c.posItemId === item.id).reduce((sum, c) => sum + c.quantity, 0)}×
@@ -2006,8 +2059,10 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                       {v.type === 'choice' && v.options && v.options.length > 0 ? (
                         <div className="space-y-2">
                           {v.options.map(opt => {
-                            const isSelected = modalVariants[v.name] === opt.id ||
-                              (typeof modalVariants[v.name] === 'object' && (modalVariants[v.name] as any).optionId === opt.id);
+                            const variantValue = modalVariants[v.name];
+                            const isCustomAmountObject = typeof variantValue === 'object' && variantValue !== null && 'optionId' in variantValue;
+                            const isSelected = variantValue === opt.id ||
+                              (isCustomAmountObject && (variantValue as { optionId: string; amount: number }).optionId === opt.id);
 
                             return (
                               <div key={opt.id} className="space-y-1">
@@ -2016,10 +2071,16 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                                   onClick={() => {
                                     if (opt.isCustomAmount) {
                                       // For custom amount, store option ID and allow amount input
-                                      setModalVariants(prev => ({
-                                        ...prev,
-                                        [v.name]: { optionId: opt.id, amount: (prev[v.name] as any)?.amount || 0 }
-                                      }));
+                                      setModalVariants(prev => {
+                                        const prevValue = prev[v.name];
+                                        const prevAmount = (typeof prevValue === 'object' && prevValue !== null && 'amount' in prevValue)
+                                          ? (prevValue as { optionId: string; amount: number }).amount
+                                          : 0;
+                                        return {
+                                          ...prev,
+                                          [v.name]: { optionId: opt.id, amount: prevAmount }
+                                        };
+                                      });
                                     } else {
                                       // Regular option, just store the option ID
                                       setModalVariants(prev => ({ ...prev, [v.name]: opt.id }));
@@ -2122,8 +2183,10 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                       {c.type === 'choice' && c.options && c.options.length > 0 ? (
                         <div className="space-y-2">
                           {c.options.map(opt => {
-                            const isSelected = modalCustomizations[c.name] === opt.id ||
-                              (typeof modalCustomizations[c.name] === 'object' && (modalCustomizations[c.name] as any).optionId === opt.id);
+                            const customizationValue = modalCustomizations[c.name];
+                            const isCustomAmountObject = typeof customizationValue === 'object' && customizationValue !== null && 'optionId' in customizationValue;
+                            const isSelected = customizationValue === opt.id ||
+                              (isCustomAmountObject && (customizationValue as { optionId: string; amount: number }).optionId === opt.id);
 
                             return (
                               <div key={opt.id} className="space-y-1">
@@ -2132,10 +2195,16 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                                   onClick={() => {
                                     if (opt.isCustomAmount) {
                                       // For custom amount, store option ID and allow amount input
-                                      setModalCustomizations(prev => ({
-                                        ...prev,
-                                        [c.name]: { optionId: opt.id, amount: (prev[c.name] as any)?.amount || 0 }
-                                      }));
+                                      setModalCustomizations(prev => {
+                                        const prevValue = prev[c.name];
+                                        const prevAmount = (typeof prevValue === 'object' && prevValue !== null && 'amount' in prevValue)
+                                          ? (prevValue as { optionId: string; amount: number }).amount
+                                          : 0;
+                                        return {
+                                          ...prev,
+                                          [c.name]: { optionId: opt.id, amount: prevAmount }
+                                        };
+                                      });
                                     } else {
                                       // Regular option, just store the option ID
                                       setModalCustomizations(prev => ({ ...prev, [c.name]: opt.id }));
@@ -2744,7 +2813,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
 };
 
 const RecentTransactionsCard: React.FC<{
-  store: any;
+  store: ReturnType<typeof useShoppingStore>;
   onEdit?: (trans: SellTransaction) => void;
   onDelete?: (transId: string) => void;
   onPrint?: (trans: SellTransaction) => void;

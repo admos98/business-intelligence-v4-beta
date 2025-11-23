@@ -1,9 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-// FIX: Add .ts extension to fix module import error
-import { t } from '../../shared/translations.ts';
+import { t } from '../../shared/translations';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { logger } from '../utils/logger';
 
 const applyPrintStyles = (): HTMLStyleElement => {
   const styleId = 'pdf-print-styles';
@@ -102,7 +102,7 @@ export const exportComponentAsPdf = async (
 
     pdf.save(filename);
   } catch (error) {
-    console.error("PDF generation failed:", error);
+    logger.error("PDF generation failed:", error);
     throw new Error(`${t.downloadingPdf} failed.`);
   } finally {
     cleanupComponent(container, root);
@@ -156,7 +156,7 @@ export const exportElementAsPdf = async (
 
         pdf.save(filename);
     } catch (error) {
-        console.error("PDF generation failed:", error);
+        logger.error("PDF generation failed:", error);
         throw new Error(`${t.downloadingPdf} failed.`);
     } finally {
         element.classList.remove('pdf-render-container');

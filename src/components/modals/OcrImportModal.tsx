@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react';
-// FIX: Add .ts extension to fix module import errors
-import { t } from '../../../shared/translations.ts';
-import { OcrParsedItem, OcrResult, PaymentMethod, PaymentStatus, Unit } from '../../../shared/types.ts';
-import { parseReceipt } from '../../lib/gemini.ts';
-import { useShoppingStore } from '../../store/useShoppingStore.ts';
+import { t } from '../../../shared/translations';
+import { OcrParsedItem, OcrResult, PaymentMethod, PaymentStatus, Unit } from '../../../shared/types';
+import { parseReceipt } from '../../lib/gemini';
+import { useShoppingStore } from '../../store/useShoppingStore';
 import { compressImage } from '../../lib/image';
+import { logger } from '../../utils/logger';
 
 interface OcrImportModalProps {
   onClose: () => void;
@@ -35,7 +35,7 @@ const OcrImportModal: React.FC<OcrImportModalProps> = ({ onClose, onConfirm }) =
         const compressedB64 = await compressImage(file);
         processImage(compressedB64.split(',')[1]);
       } catch (error) {
-        console.error("Image processing failed:", error);
+        logger.error("Image processing failed:", error);
         setError(t.ocrError);
       }
     }
@@ -47,7 +47,7 @@ const OcrImportModal: React.FC<OcrImportModalProps> = ({ onClose, onConfirm }) =
       const result = await parseReceipt(base64String, allCategories());
       setParsedResult(result);
     } catch (err) {
-      console.error(err);
+      logger.error("OCR processing failed:", err);
       setError(t.ocrError);
     } finally {
       setIsLoading(false);
@@ -57,15 +57,15 @@ const OcrImportModal: React.FC<OcrImportModalProps> = ({ onClose, onConfirm }) =
   const handleItemChange = (index: number, field: keyof OcrParsedItem, value: string | number) => {
     if (!parsedResult) return;
     const newItems = [...parsedResult.items];
-    const targetItem = newItems[index];
+    const targetItem = { ...newItems[index] };
 
     if (field === 'name' || field === 'suggestedCategory' || field === 'unit') {
-        // @ts-ignore
-        targetItem[field] = value as string;
-    } else {
-        // @ts-ignore
-        targetItem[field] = Number(value) || 0;
+        (targetItem as Record<string, unknown>)[field] = value as string;
+    } else if (field === 'quantity' || field === 'pricePerUnit' || field === 'totalPrice' || field === 'price') {
+        (targetItem as Record<string, unknown>)[field] = Number(value) || 0;
     }
+
+    newItems[index] = targetItem;
     setParsedResult({ ...parsedResult, items: newItems });
   };
 
@@ -140,10 +140,10 @@ const OcrImportModal: React.FC<OcrImportModalProps> = ({ onClose, onConfirm }) =
                         {Object.values(Unit).map((u: string) => <option key={u} value={u}>{u}</option>)}
                     </select>
                     <div className="relative group">
-                        <input type="number" value={item.price} onChange={e => handleItemChange(index, 'price', e.target.value)} className="w-full px-2 py-1 bg-surface border border-border rounded-md"/>
-                        {item.price > 0 && (
+                        <input type="number" value={item.price ?? item.totalPrice} onChange={e => handleItemChange(index, 'price', e.target.value)} className="w-full px-2 py-1 bg-surface border border-border rounded-md"/>
+                        {(item.price ?? item.totalPrice) > 0 && (
                             <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-max px-2 py-1 bg-surface text-primary text-xs font-normal rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none border border-border z-10">
-                                {t.tomanEquivalent((item.price / 10).toLocaleString('fa-IR'))}
+                                {t.tomanEquivalent(((item.price ?? item.totalPrice) / 10).toLocaleString('fa-IR'))}
                             </span>
                         )}
                     </div>

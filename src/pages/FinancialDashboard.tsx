@@ -7,14 +7,17 @@ import SkeletonLoader from '../components/common/SkeletonLoader';
 import Button from '../components/common/Button';
 import { usePageActions } from '../contexts/PageActionsContext';
 
-interface FinancialDashboardProps {}
+interface FinancialDashboardProps {
+  onLogout: () => void;
+  onNavigate?: (view: string) => void;
+}
 
 type SummaryPeriod = '7d' | '30d' | 'mtd' | 'ytd' | 'all';
 
 const TrendUpIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8L5.586 19.414M7 13v8m0 0H3m4 0v-4" /></svg>;
 const TrendDownIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 17H3m0 0v-8m0 8l14.858-14.858M17 11v8m0 0h4m-4 0v-4" /></svg>;
 
-const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
+const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ onNavigate }) => {
   const store = useShoppingStore();
   const { getFinancialOverview } = store;
 
@@ -90,6 +93,42 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = () => {
       <Header title="تقرير مالی و حسابداری" hideMenu={true} />
 
       <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-8">
+        {/* FINANCIAL STATEMENTS QUICK LINKS */}
+        {onNavigate && (
+          <Card className="bg-accent/10 border-accent border-2">
+            <div className="text-center mb-4">
+              <h3 className="text-lg font-bold text-primary">صورت‌های مالی کامل</h3>
+              <p className="text-sm text-secondary mt-1">مشاهده گزارش‌های تفصیلی مالی</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <button
+                onClick={() => onNavigate('balanceSheet')}
+                className="p-4 bg-surface hover:bg-border rounded-lg transition-colors text-center border-2 border-transparent hover:border-accent"
+              >
+                <div className="text-3xl mb-2">📋</div>
+                <div className="font-bold text-primary">ترازنامه</div>
+                <div className="text-xs text-secondary mt-1">Balance Sheet</div>
+              </button>
+              <button
+                onClick={() => onNavigate('incomeStatement')}
+                className="p-4 bg-surface hover:bg-border rounded-lg transition-colors text-center border-2 border-transparent hover:border-accent"
+              >
+                <div className="text-3xl mb-2">💹</div>
+                <div className="font-bold text-primary">صورت سود و زیان</div>
+                <div className="text-xs text-secondary mt-1">Income Statement</div>
+              </button>
+              <button
+                onClick={() => onNavigate('cashFlow')}
+                className="p-4 bg-surface hover:bg-border rounded-lg transition-colors text-center border-2 border-transparent hover:border-accent"
+              >
+                <div className="text-3xl mb-2">💸</div>
+                <div className="font-bold text-primary">جریان وجوه نقد</div>
+                <div className="text-xs text-secondary mt-1">Cash Flow Statement</div>
+              </button>
+            </div>
+          </Card>
+        )}
+
         {/* PERIOD SELECTOR */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 justify-center max-w-2xl mx-auto">
           {['7d', '30d', 'mtd', 'ytd', 'all'].map((p) => (

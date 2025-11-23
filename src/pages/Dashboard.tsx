@@ -7,13 +7,14 @@ import ReportsModal from '../components/modals/ReportsModal';
 import { t } from '../../shared/translations';
 import { useShoppingStore } from '../store/useShoppingStore';
 import { useToast } from '../components/common/Toast';
+import type { StoredData } from '../lib/api';
 import { toJalaliDateString, gregorianToJalali } from '../../shared/jalali';
 import CurrencyDisplay from '../components/common/CurrencyDisplay';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
-import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useDebounce } from '../hooks/useDebounce';
 import { usePageActions } from '../contexts/PageActionsContext';
+import { logger } from '../utils/logger';
 
 interface DashboardProps {
   onSelectList: (listId: string) => void;
@@ -44,7 +45,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
   const { addToast } = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; listId: string; listName: string; }>({ isOpen: false, listId: '', listName: '' });
   const [importConfirmOpen, setImportConfirmOpen] = useState(false);
-  const [importPreview, setImportPreview] = useState<{ data: any; isOpen: boolean }>({ data: null, isOpen: false });
+  const [importPreview, setImportPreview] = useState<{ data: StoredData | null; isOpen: boolean }>({ data: null, isOpen: false });
 
   const vendorMap = React.useMemo(() => new Map(vendors.map(v => [v.id, v.name])), [vendors]);
 
@@ -81,7 +82,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
             }
         } catch (error) {
             addToast(t.importError, 'error');
-            console.error("Import failed:", error);
+            logger.error("Import failed:", error);
             if (error instanceof Error && (error.message.includes('saveData'))) {
                 addToast(t.syncError, 'error');
             }
@@ -100,7 +101,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
         setImportPreview({ data: null, isOpen: false });
     } catch (error) {
         addToast(t.importError, 'error');
-        console.error("Import failed:", error);
+        logger.error("Import failed:", error);
         if (error instanceof Error && (error.message.includes('saveData'))) {
             addToast(t.syncError, 'error');
         }
@@ -225,10 +226,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
   return (
     <>
       <Header title={t.appTitle} hideMenu={true} />
-      <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card title={t.todaysBriefing} className="lg:col-span-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <main className="p-4 sm:p-6 lg:p-8 max-w-[1920px] mx-auto space-y-6 sm:space-y-8">
+        <div className="grid grid-cols-1 gap-6">
+            <Card title={t.todaysBriefing} className="w-full">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="md:col-span-1">
                         <ExpenseForecastCard forecast={expenseForecast} />
                     </div>
@@ -236,7 +237,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
                         <h4 className="font-bold text-primary mb-3">{t.todaysSmartSuggestions}</h4>
                         {smartSuggestions.length > 0 ? (
                             <div className="space-y-3">
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
                                     {displayedSuggestions.map(s => <SmartSuggestionCard key={s.name+s.unit} suggestion={s} onAdd={handleAddItemFromSuggestion} isAdded={isItemInTodaysPendingList(s.name, s.unit)} />)}
                                 </div>
                                 {hiddenSuggestionsCount > 0 && (
@@ -261,40 +262,43 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
 
         {pendingPayments.length > 0 && (
             <div>
-                <h2 className="text-xl font-bold text-primary mb-4">{t.pendingPayments}</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {pendingPayments.map(item => <PendingPaymentCard key={item.id} item={item} vendorName={item.vendorId ? vendorMap.get(item.vendorId) : undefined} onGoToList={onSelectList} />)}
+                <h2 className="text-xl font-bold text-primary mb-4 sm:mb-6">{t.pendingPayments}</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                    {pendingPayments.map((item, index) => <PendingPaymentCard key={`${item.itemName}-${item.vendorId || 'unknown'}-${index}`} item={item} vendorName={item.vendorId ? vendorMap.get(item.vendorId) : undefined} onGoToList={onSelectList} />)}
                 </div>
             </div>
         )}
 
-        <div className="flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center">
-          <h1 className="text-2xl font-bold text-primary">{t.myShoppingLists}</h1>
-           <div className="relative w-full md:max-w-sm">
+        <div className="flex flex-col lg:flex-row gap-4 justify-between items-stretch lg:items-center">
+          <h1 className="text-xl sm:text-2xl font-bold text-primary">{t.myShoppingLists}</h1>
+          <div className="flex flex-col sm:flex-row gap-3 flex-1 lg:flex-initial lg:max-w-md">
+            <div className="relative flex-1">
               <input
                   type="text"
                   placeholder={t.searchLists}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full px-4 py-2 pr-10 bg-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full px-4 py-2.5 pr-10 bg-surface border border-border-strong rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all text-primary placeholder-secondary"
               />
-              <SearchIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary" />
-          </div>
-          <div className="flex gap-2 justify-end flex-wrap">
+              <SearchIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary pointer-events-none" />
+            </div>
+            <div className="flex gap-2 justify-end sm:justify-start flex-wrap">
              <input type="file" ref={importInputRef} className="hidden" accept=".json" onChange={handleImportData} />
-             <Button variant="ghost" size="sm" onClick={() => setImportConfirmOpen(true)}>
+             <Button variant="ghost" size="sm" onClick={() => setImportConfirmOpen(true)} className="whitespace-nowrap">
                {t.importData}
              </Button>
-             <Button variant="ghost" size="sm" onClick={handleExportData}>
+             <Button variant="ghost" size="sm" onClick={handleExportData} className="whitespace-nowrap">
                {t.exportData}
              </Button>
-            <Button
-              onClick={() => setIsNewListModalOpen(true)}
-              size="sm"
-              icon={<PlusIcon />}
-            >
-              {t.createNewList}
-            </Button>
+             <Button
+               onClick={() => setIsNewListModalOpen(true)}
+               size="sm"
+               icon={<PlusIcon />}
+               className="whitespace-nowrap"
+             >
+               {t.createNewList}
+             </Button>
+            </div>
           </div>
         </div>
 
@@ -309,7 +313,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
                 onClick={() => setIsNewListModalOpen(true)}
                 icon={<PlusIcon />}
                 className="animate-fade-in-up"
-                style={{ animationDelay: '200ms' }}
               >
                 {t.createNewList}
               </Button>
@@ -327,7 +330,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
         ) : (
           <div className="space-y-8">
             {currentMonthLists.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
                     {currentMonthLists.map((list: ShoppingList) => (
                         <ListCard key={list.id} list={list} onSelect={onSelectList} onDelete={handleDelete} />
                     ))}
@@ -349,7 +352,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectList, onViewAnalysis, onV
                             <ChevronDownIcon className={`w-5 h-5 text-secondary transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
                         </button>
                         {isExpanded && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 animate-fade-in">
                                 {pastMonthsGroups[monthKey].map(list => (
                                     <ListCard key={list.id} list={list} onSelect={onSelectList} onDelete={handleDelete} />
                                 ))}
@@ -453,7 +456,7 @@ const ListCard: React.FC<{list: ShoppingList, onSelect: (id: string) => void, on
 
     return (
       <Card
-        className="flex flex-col group hover-lift animate-fade-in p-0 overflow-hidden"
+        className="flex flex-col group animate-fade-in p-0 overflow-hidden h-full"
         hover
         onClick={() => onSelect(list.id)}
       >
@@ -481,8 +484,7 @@ const ListCard: React.FC<{list: ShoppingList, onSelect: (id: string) => void, on
           <Button
             variant="danger"
             size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={() => {
               onDelete(list.id, list.name);
             }}
             className="w-full"
@@ -496,13 +498,14 @@ const ListCard: React.FC<{list: ShoppingList, onSelect: (id: string) => void, on
 
 
 const SmartSuggestionCard: React.FC<{suggestion: SmartSuggestion, onAdd: (suggestion: SmartSuggestion) => void, isAdded: boolean}> = ({ suggestion, onAdd, isAdded }) => {
-    const priorityColor: Record<SmartSuggestion['priority'], string> = {
+    const priorityColor: Record<string, string> = {
         high: 'border-danger/50 bg-danger/5',
         medium: 'border-yellow-500/50 bg-yellow-500/5',
         low: 'border-transparent bg-background',
     }
+    const priority = suggestion.priority || 'low';
     return (
-        <div className={`p-3 rounded-lg border ${priorityColor[suggestion.priority]} flex flex-col`}>
+        <div className={`p-3 rounded-lg border ${priorityColor[priority] || priorityColor.low} flex flex-col`}>
             <div className="flex-grow">
                 <p className="font-bold text-primary text-sm truncate">{suggestion.name}</p>
                 <p className="text-xs text-secondary">{suggestion.category}</p>
@@ -550,14 +553,16 @@ const PendingPaymentCard: React.FC<{item: PendingPaymentItem, vendorName?: strin
             <div className="flex flex-col justify-between h-full">
                 <div>
                     <div className="flex justify-between items-start">
-                        <p className="font-bold text-primary text-md">{item.name}</p>
-                        <CurrencyDisplay value={item.paidPrice || 0} className="font-semibold text-danger" />
+                        <p className="font-bold text-primary text-md">{item.itemName}</p>
+                        <CurrencyDisplay value={item.totalDue || 0} className="font-semibold text-danger" />
                     </div>
-                    <p className="text-sm text-secondary">{vendorName || 'نامشخص'}</p>
-                    <p className="text-xs text-secondary mt-1">{t.purchasedOn(toJalaliDateString(item.purchaseDate, {format: 'long'}))}</p>
+                    <p className="text-sm text-secondary">{vendorName || item.vendorName || 'نامشخص'}</p>
+                    {item.purchaseDate && (
+                        <p className="text-xs text-secondary mt-1">{t.purchasedOn(toJalaliDateString(typeof item.purchaseDate === 'string' ? item.purchaseDate : item.purchaseDate.toISOString(), {format: 'long'}))}</p>
+                    )}
                 </div>
                 <button
-                    onClick={() => onGoToList(item.listId)}
+                    onClick={() => item.listIds && item.listIds.length > 0 && onGoToList(item.listIds[0])}
                     className="mt-4 w-full text-center px-3 py-1.5 bg-border text-primary text-sm font-medium rounded-md hover:bg-accent hover:text-accent-text transition-colors"
                 >
                     {t.goToShoppingList}

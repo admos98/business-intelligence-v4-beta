@@ -1,12 +1,29 @@
-import React from 'react';
+import React, { memo } from 'react';
 
+/**
+ * Props for the LoadingSpinner component
+ */
 interface LoadingSpinnerProps {
+  /** Size of the spinner */
   size?: 'sm' | 'md' | 'lg';
+  /** Additional CSS classes */
   className?: string;
+  /** Optional text to display below the spinner */
   text?: string;
 }
 
-const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
+/**
+ * LoadingSpinner component for displaying loading states
+ *
+ * Displays an animated spinner with optional text below it.
+ * Includes proper ARIA labels for accessibility.
+ *
+ * @example
+ * ```tsx
+ * <LoadingSpinner size="lg" text="در حال بارگذاری..." />
+ * ```
+ */
+const LoadingSpinner: React.FC<LoadingSpinnerProps> = memo(({
   size = 'md',
   className = '',
   text
@@ -29,6 +46,8 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
       )}
     </div>
   );
-};
+});
+
+LoadingSpinner.displayName = 'LoadingSpinner';
 
 export default LoadingSpinner;

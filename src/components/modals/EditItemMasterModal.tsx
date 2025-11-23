@@ -1,12 +1,10 @@
 // src/components/modals/EditItemMasterModal.tsx
 
 import React, { useState, useEffect } from 'react';
-import { t } from '../../../shared/translations.ts';
-import { MasterItem, Unit } from '../../../shared/types.ts';
-// FIX: Corrected the path by adding the missing slash.
-import { useShoppingStore } from '../../store/useShoppingStore.ts';
-// FIX: Corrected the path to be relative to the current file location.
-import { useToast } from '../common/Toast.tsx';
+import { t } from '../../../shared/translations';
+import { MasterItem, Unit } from '../../../shared/types';
+import { useShoppingStore } from '../../store/useShoppingStore';
+import { useToast } from '../common/Toast';
 
 interface EditItemMasterModalProps {
   onClose: () => void;

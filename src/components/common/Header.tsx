@@ -11,11 +11,7 @@ interface HeaderProps {
   hideMenu?: boolean; // Always true now - actions are in Navbar
 }
 
-const MenuIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-    </svg>
-);
+// MenuIcon removed - no longer used (actions are in Navbar)
 
 const Header: React.FC<HeaderProps> = ({ title, onBack, backText }) => {
   const [theme, toggleTheme] = useTheme();
@@ -30,22 +26,26 @@ const Header: React.FC<HeaderProps> = ({ title, onBack, backText }) => {
   }, []);
 
   return (
-    <header className={`bg-surface/80 backdrop-blur-lg sticky top-0 z-20 border-b border-border transition-shadow duration-300 ${isScrolled ? 'shadow-header-scrolled' : ''}`}>
-      <div className="max-w-7xl mx-auto py-3 px-4 sm:px-6 lg:px-8">
+    <header className={`bg-surface/95 backdrop-blur-xl sticky top-0 z-20 border-b border-border-strong transition-all duration-300 ${isScrolled ? 'shadow-lg shadow-black/5' : ''}`}>
+      <div className="max-w-[1920px] mx-auto py-3 px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-4">
           {/* RIGHT Group (Logo & Title) */}
-          <div className="flex items-center gap-3">
-             <h1 className="text-lg font-bold text-primary tracking-tight text-right">
+          <div className="flex items-center gap-3 min-w-0">
+             <SafeSVG svgContent={logoSvg} className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0" />
+             <h1 className="text-base sm:text-lg font-bold text-primary tracking-tight text-right truncate">
                 {title}
              </h1>
-             <SafeSVG svgContent={logoSvg} className="w-10 h-10" />
           </div>
 
           {/* LEFT Group (Back button & Theme toggle) */}
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-2 flex-shrink-0">
             {onBack && (
-              <button onClick={onBack} className="text-accent hover:underline transition-colors text-sm font-medium">
-                &larr; {backText}
+              <button
+                onClick={onBack}
+                className="px-3 py-1.5 text-accent hover:bg-accent-soft rounded-lg transition-all duration-200 text-sm font-medium hover:scale-105 active:scale-95 flex items-center gap-1"
+              >
+                <span>&larr;</span>
+                <span className="hidden sm:inline">{backText}</span>
               </button>
             )}
             <ThemeToggleButton theme={theme} toggleTheme={toggleTheme} />

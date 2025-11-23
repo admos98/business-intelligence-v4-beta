@@ -47,9 +47,33 @@ export enum PaymentMethod {
   Staff = 'پرسنل',
 }
 
+// ============================================
+// AUTH & STATE TYPES
+// ============================================
+
+export interface User {
+  id?: string;
+  username: string;
+  role?: 'admin' | 'manager' | 'cashier';
+  passwordHash?: string;
+  salt?: string;
+}
+
+export interface AuthSlice {
+  users: User[];
+  currentUser: User | null;
+  login: (username: string, password: string) => Promise<boolean>;
+  logout: () => void;
+}
+
+export interface ShoppingState {
+  isHydrating: boolean;
+}
+
 export interface Vendor {
   id: string;
   name: string;
+  contactPerson?: string;
   phone?: string;
   address?: string;
   notes?: string;
@@ -60,13 +84,17 @@ export interface ShoppingItem {
   name: string;
   unit: Unit;
   quantity: number;
+  amount?: number; // Alias for quantity (backward compatibility)
   category: string;
   status: ItemStatus;
   paidPrice?: number;
+  estimatedPrice?: number;
   paymentStatus: PaymentStatus;
+  paymentMethod?: PaymentMethod;
   vendorId?: string;
   notes?: string;
   receiptImage?: string;
+  purchasedAmount?: number; // Total amount purchased (quantity * price)
 }
 
 export interface ShoppingList {
@@ -76,16 +104,32 @@ export interface ShoppingList {
   items: ShoppingItem[];
 }
 
+export interface OcrParsedItem {
+  name: string;
+  unit: Unit;
+  quantity: number;
+  pricePerUnit: number;
+  totalPrice: number;
+  suggestedCategory?: string;
+  price?: number;
+}
+
 export interface OcrResult {
-  items: Array<{
-    name: string;
-    unit: Unit;
-    quantity: number;
-    pricePerUnit: number;
-    totalPrice: number;
-  }>;
+  items: OcrParsedItem[];
   vendorName?: string;
   date?: string;
+}
+
+export interface AggregatedShoppingItem {
+  name: string;
+  unit: Unit;
+  category: string;
+  vendorId?: string;
+  paymentStatus?: PaymentStatus;
+  paymentMethod?: PaymentMethod;
+  totalAmount: number;
+  totalPrice: number;
+  purchaseHistory: unknown[]; // Array of purchase history entries
 }
 
 export interface PendingPaymentItem {
@@ -95,6 +139,7 @@ export interface PendingPaymentItem {
   vendorId?: string;
   vendorName?: string;
   listIds: string[];
+  purchaseDate?: Date | string; // Date or ISO string
 }
 
 export interface SmartSuggestion {
@@ -102,7 +147,10 @@ export interface SmartSuggestion {
   unit: Unit;
   category: string;
   reason: string;
-  score: number;
+  score?: number;
+  lastPurchaseDate?: Date | string; // Date or ISO string
+  priority?: 'high' | 'medium' | 'low' | number;
+  avgPurchaseCycleDays?: number;
 }
 
 export interface RecentPurchaseItem {
@@ -111,6 +159,7 @@ export interface RecentPurchaseItem {
   lastPurchaseDate: Date;
   lastPricePerUnit: number;
   purchaseCount: number;
+  listId?: string;
 }
 
 export interface MasterItem {
@@ -119,6 +168,9 @@ export interface MasterItem {
   category: string;
   purchaseCount: number;
   lastPurchaseDate?: Date;
+  totalQuantity?: number;
+  totalSpend?: number;
+  lastPricePerUnit?: number;
 }
 
 export interface SummaryData {
@@ -142,16 +194,22 @@ export interface SummaryData {
 
 export interface InflationDetail {
   itemName: string;
+  name?: string; // Alias for itemName
   unit: Unit;
   oldPrice: number;
   newPrice: number;
+  startPrice?: number; // Alias for oldPrice
+  endPrice?: number; // Alias for newPrice
   percentageChange: number;
+  changePercentage?: number; // Alias for percentageChange
   daysBetween: number;
 }
 
 export interface InflationPoint {
   date: string; // ISO string
+  period?: string; // Period label
   averageInflation: number;
+  priceIndex?: number;
   itemCount: number;
 }
 
@@ -160,6 +218,10 @@ export interface InflationData {
   totalItems: number;
   details: InflationDetail[];
   timeline: InflationPoint[];
+  overallChange?: number;
+  priceIndexHistory?: InflationPoint[];
+  topItemRises?: InflationDetail[];
+  topCategoryRises?: InflationDetail[];
 }
 
 // ============================================
@@ -172,6 +234,8 @@ export interface POSItem {
   category: string;
   sellPrice: number;
   recipeId?: string; // Link to recipe if this item is made from ingredients
+  isTaxable?: boolean; // Whether this item is subject to tax (Phase 3)
+  taxRateId?: string; // Specific tax rate for this item (Phase 3)
   variants?: Array<{
     id: string;
     name: string;
@@ -221,6 +285,9 @@ export interface SellTransactionItem {
   totalPrice: number;
   customizationChoices?: Record<string, string | number | { optionId: string; amount: number }>;
   costOfGoods?: number; // COGS if linked to recipe
+  taxAmount?: number; // Tax amount for this item (Phase 3)
+  taxRate?: number; // Tax rate applied (Phase 3)
+  isTaxable?: boolean; // Whether tax was applied (Phase 3)
 }
 
 export interface SellTransaction {
@@ -228,7 +295,9 @@ export interface SellTransaction {
   date: string; // ISO string
   receiptNumber?: number; // Sequential receipt number
   items: SellTransactionItem[];
-  totalAmount: number; // Revenue (negative for refunds)
+  subtotal?: number; // Subtotal before tax (Phase 3)
+  taxAmount?: number; // Total tax amount (Phase 3)
+  totalAmount: number; // Revenue (negative for refunds) - includes tax if applicable
   paymentMethod: PaymentMethod; // Primary payment method (for backwards compatibility)
   splitPayments?: Array<{ method: PaymentMethod; amount: number }>; // Split payment amounts
   notes?: string;
@@ -353,4 +422,355 @@ export interface Shift {
   notes?: string;
   isActive: boolean;
   transactions: string[]; // Transaction IDs for this shift
+}
+
+// ============================================
+// ACCOUNTING TYPES (PHASE 1)
+// ============================================
+
+export enum AccountType {
+  Asset = 'دارایی',
+  Liability = 'بدهی',
+  Equity = 'حقوق صاحبان سهام',
+  Revenue = 'درآمد',
+  Expense = 'هزینه',
+  COGS = 'بهای تمام شده'
+}
+
+export interface Account {
+  id: string;
+  code: string; // e.g., "1-101" for Cash
+  name: string; // e.g., "صندوق"
+  nameEn?: string; // "Cash" for reference
+  type: AccountType;
+  parentId?: string; // For sub-accounts
+  balance: number; // Current balance
+  isActive: boolean;
+  description?: string;
+  createdAt: string;
+}
+
+export interface JournalEntry {
+  id: string;
+  date: string; // ISO string
+  description: string;
+  reference?: string; // Link to transaction/sale/purchase ID
+  referenceType?: 'sale' | 'purchase' | 'payment' | 'adjustment' | 'manual';
+  entries: Array<{
+    accountId: string;
+    debit: number;
+    credit: number;
+    description?: string;
+  }>;
+  isAutomatic: boolean; // True if generated automatically
+  createdBy?: string;
+  createdAt: string;
+  isReversed?: boolean; // For corrections
+  reversalOf?: string; // ID of journal entry being reversed
+}
+
+export interface GeneralLedgerEntry {
+  account: Account;
+  entries: Array<{
+    date: string;
+    description: string;
+    reference?: string;
+    debit: number;
+    credit: number;
+    balance: number;
+  }>;
+  openingBalance: number;
+  closingBalance: number;
+}
+
+export interface TrialBalanceEntry {
+  account: Account;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+// ============================================
+// FINANCIAL STATEMENTS TYPES (PHASE 2)
+// ============================================
+
+export interface BalanceSheetData {
+  asOfDate: Date;
+  assets: {
+    current: Array<{ account: Account; amount: number }>;
+    nonCurrent: Array<{ account: Account; amount: number }>;
+    total: number;
+  };
+  liabilities: {
+    current: Array<{ account: Account; amount: number }>;
+    nonCurrent: Array<{ account: Account; amount: number }>;
+    total: number;
+  };
+  equity: {
+    accounts: Array<{ account: Account; amount: number }>;
+    total: number;
+  };
+  balanced: boolean;
+}
+
+export interface IncomeStatementData {
+  startDate: Date;
+  endDate: Date;
+  revenue: {
+    accounts: Array<{ account: Account; amount: number }>;
+    total: number;
+  };
+  cogs: {
+    accounts: Array<{ account: Account; amount: number }>;
+    total: number;
+  };
+  grossProfit: number;
+  grossMargin: number;
+  expenses: {
+    accounts: Array<{ account: Account; amount: number }>;
+    total: number;
+  };
+  netIncome: number;
+  netMargin: number;
+}
+
+export interface CashFlowStatementData {
+  startDate: Date;
+  endDate: Date;
+  operatingActivities: {
+    netIncome: number;
+    adjustments: Array<{ description: string; amount: number }>;
+    total: number;
+  };
+  investingActivities: {
+    items: Array<{ description: string; amount: number }>;
+    total: number;
+  };
+  financingActivities: {
+    items: Array<{ description: string; amount: number }>;
+    total: number;
+  };
+  netCashFlow: number;
+  beginningCash: number;
+  endingCash: number;
+}
+
+// ============================================
+// TAX MANAGEMENT TYPES (PHASE 3)
+// ============================================
+
+export interface TaxRate {
+  id: string;
+  name: string; // e.g., "مالیات بر ارزش افزوده 9%"
+  nameEn?: string; // "VAT 9%"
+  rate: number; // e.g., 0.09 for 9%
+  isActive: boolean;
+  accountId: string; // Link to Tax Payable account
+  description?: string;
+  createdAt: string;
+}
+
+export interface TaxSettings {
+  enabled: boolean; // Global tax enable/disable
+  defaultTaxRateId?: string; // Default tax rate to apply
+  includeTaxInPrice: boolean; // Tax-inclusive vs tax-exclusive pricing
+  showTaxOnReceipts: boolean; // Show tax breakdown on receipts
+}
+
+export interface TaxReportData {
+  startDate: Date;
+  endDate: Date;
+  taxableRevenue: number;
+  nonTaxableRevenue: number;
+  totalRevenue: number;
+  taxCollected: number;
+  taxRate: number;
+  transactions: Array<{
+    id: string;
+    date: string;
+    receiptNumber?: number;
+    amount: number;
+    taxAmount: number;
+    taxRate: number;
+  }>;
+}
+
+// ============================================
+// CUSTOMER & ACCOUNTS RECEIVABLE TYPES (PHASE 4)
+// ============================================
+
+export interface Customer {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  taxId?: string; // Tax identification number
+  creditLimit?: number;
+  paymentTerms?: number; // Payment terms in days (e.g., Net 30)
+  balance: number; // Current outstanding balance
+  isActive: boolean;
+  notes?: string;
+  createdAt: string;
+}
+
+export enum InvoiceStatus {
+  Draft = 'پیش‌نویس',
+  Sent = 'ارسال شده',
+  Paid = 'پرداخت شده',
+  PartiallyPaid = 'پرداخت جزئی',
+  Overdue = 'معوق',
+  Cancelled = 'لغو شده'
+}
+
+export enum InvoiceType {
+  Sale = 'فروش', // Accounts Receivable
+  Purchase = 'خرید', // Accounts Payable
+  Expense = 'هزینه'
+}
+
+export interface InvoiceLineItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  taxAmount?: number;
+  total: number;
+}
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  type: InvoiceType;
+  customerId?: string; // For sales invoices (AR)
+  vendorId?: string; // For purchase invoices (AP)
+  issueDate: string;
+  dueDate: string;
+  items: InvoiceLineItem[];
+  subtotal: number;
+  taxAmount: number;
+  totalAmount: number;
+  paidAmount: number;
+  status: InvoiceStatus;
+  paymentMethod?: PaymentMethod;
+  notes?: string;
+  reference?: string; // Link to transaction or purchase
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Payment {
+  id: string;
+  invoiceId: string;
+  amount: number;
+  paymentDate: string;
+  paymentMethod: PaymentMethod;
+  reference?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface AgingBucket {
+  period: string; // e.g., "0-30 days", "31-60 days"
+  amount: number;
+  count: number;
+}
+
+export interface AgingReportData {
+  type: 'receivable' | 'payable';
+  asOfDate: Date;
+  current: AgingBucket; // 0-30 days
+  days31to60: AgingBucket;
+  days61to90: AgingBucket;
+  over90: AgingBucket;
+  total: number;
+  details: Array<{
+    id: string;
+    name: string; // Customer or Vendor name
+    invoiceNumber: string;
+    invoiceDate: string;
+    dueDate: string;
+    amount: number;
+    daysOverdue: number;
+  }>;
+}
+
+// ============================================
+// BUDGETING TYPES (PHASE 6)
+// ============================================
+
+export interface Budget {
+  id: string;
+  name: string;
+  fiscalYear: number;
+  startDate: string;
+  endDate: string;
+  status: 'draft' | 'active' | 'closed';
+  items: BudgetItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BudgetItem {
+  id: string;
+  accountId: string;
+  accountName: string;
+  budgetedAmount: number;
+  actualAmount?: number;
+  variance?: number;
+  variancePercent?: number;
+}
+
+export interface BudgetVarianceReport {
+  budgetId: string;
+  budgetName: string;
+  period: { start: Date; end: Date };
+  items: Array<{
+    accountName: string;
+    budgeted: number;
+    actual: number;
+    variance: number;
+    variancePercent: number;
+    status: 'over' | 'under' | 'on-track';
+  }>;
+  totalBudgeted: number;
+  totalActual: number;
+  totalVariance: number;
+}
+
+// ============================================
+// MULTI-CURRENCY TYPES (PHASE 7)
+// ============================================
+
+export interface Currency {
+  code: string; // ISO code like "USD", "EUR", "IRR"
+  name: string;
+  symbol: string;
+  isBaseCurrency: boolean;
+}
+
+export interface ExchangeRate {
+  id: string;
+  fromCurrency: string;
+  toCurrency: string;
+  rate: number;
+  effectiveDate: string;
+  createdAt: string;
+}
+
+// ============================================
+// ADVANCED REPORTING (PHASE 8)
+// ============================================
+
+export interface CustomReport {
+  id: string;
+  name: string;
+  description?: string;
+  reportType: 'custom' | 'pivot' | 'chart';
+  filters: Record<string, unknown>;
+  columns: string[];
+  sortBy?: string;
+  groupBy?: string;
+  createdAt: string;
+  updatedAt: string;
 }

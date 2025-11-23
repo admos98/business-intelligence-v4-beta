@@ -1,17 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-// FIX: Add .tsx extension to fix module import error
-import Header from '../components/common/Header.tsx';
-import Card from '../components/common/Card.tsx';
-// FIX: Add .ts extension to fix module import error
-import { t } from '../../shared/translations.ts';
-import { useShoppingStore } from '../store/useShoppingStore.ts';
-import { SummaryData } from '../../shared/types.ts';
-import { generateExecutiveSummary } from '../lib/gemini.ts';
-import SkeletonLoader from '../components/common/SkeletonLoader.tsx';
-import CurrencyDisplay from '../components/common/CurrencyDisplay.tsx';
-import { useToast } from '../components/common/Toast.tsx';
+import Header from '../components/common/Header';
+import Card from '../components/common/Card';
+import { t } from '../../shared/translations';
+import { useShoppingStore } from '../store/useShoppingStore';
+import { SummaryData } from '../../shared/types';
+import { generateExecutiveSummary } from '../lib/gemini';
+import SkeletonLoader from '../components/common/SkeletonLoader';
+import CurrencyDisplay from '../components/common/CurrencyDisplay';
+import { useToast } from '../components/common/Toast';
 // FIX: Replace declare with import for Chart.js
-import { Chart } from 'chart.js/auto';
+import { Chart, TooltipItem } from 'chart.js/auto';
+import { logger } from '../utils/logger';
 import { usePageActions } from '../contexts/PageActionsContext';
 import Button from '../components/common/Button';
 
@@ -44,9 +43,9 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack }) => {
   const [isUpdating, setIsUpdating] = useState(false);
 
   const spendingTimeChartRef = useRef<HTMLCanvasElement | null>(null);
-  const spendingTimeChartInstance = useRef<any | null>(null);
+  const spendingTimeChartInstance = useRef<Chart | null>(null);
   const spendingCategoryChartRef = useRef<HTMLCanvasElement | null>(null);
-  const spendingCategoryChartInstance = useRef<any | null>(null);
+  const spendingCategoryChartInstance = useRef<Chart | null>(null);
 
   useEffect(() => {
     setIsUpdating(true);
@@ -58,7 +57,7 @@ const SummaryDashboard: React.FC<SummaryDashboardProps> = ({ onBack }) => {
                 setIsInitialLoading(false);
             }
         } catch (error) {
-            console.error('Error loading summary data:', error);
+            logger.error('Error loading summary data:', error);
             setSummaryData(null);
             setIsInitialLoading(false);
         } finally {
@@ -85,7 +84,7 @@ useEffect(() => {
       })
       .catch(err => {
           if (!cancelled) {
-            console.error(err);
+            logger.error("Failed to generate AI summary:", err);
             setAiSummary(t.aiSummaryError);
           }
       })
@@ -168,12 +167,12 @@ useEffect(() => {
               bodyFont: { family: "'Vazirmatn', sans-serif" },
               titleFont: { family: "'Vazirmatn', sans-serif" },
               callbacks: {
-                  label: function(context: any) {
-                      let label = context.dataset.label || '';
+                  label: function(context: { dataset?: { label?: string }; parsed?: { y?: number | null } }) {
+                      let label = context.dataset?.label || '';
                       if (label) {
                           label += ': ';
                       }
-                      if (context.parsed.y !== null) {
+                      if (context.parsed?.y !== null && context.parsed?.y !== undefined) {
                           label += context.parsed.y.toLocaleString('fa-IR');
                       }
                       return label;
@@ -196,13 +195,15 @@ useEffect(() => {
               bodyFont: { family: "'Vazirmatn', sans-serif" },
               titleFont: { family: "'Vazirmatn', sans-serif" },
               callbacks: {
-                  label: function(context: any) {
+                  label: function(context: TooltipItem<'doughnut'>) {
                       let label = context.label || '';
                       if (label) {
                           label += ': ';
                       }
-                      const total = context.chart.data.datasets[0].data.reduce((a: number, b: number) => a + b, 0);
-                      const value = context.parsed;
+                      const firstDataset = context.chart?.data?.datasets?.[0];
+                      const datasetData = firstDataset?.data as number[] | undefined;
+                      const total = datasetData?.reduce((a: number, b: number) => a + b, 0) || 0;
+                      const value = typeof context.parsed === 'number' ? context.parsed : 0;
                       const percentage = total > 0 ? ((value / total) * 100).toFixed(1) + '%' : '0%';
 
                       return `${label}: ${value.toLocaleString('fa-IR')} (${percentage})`;
@@ -215,21 +216,21 @@ useEffect(() => {
 
   useEffect(() => {
     if (spendingTimeChartInstance.current) spendingTimeChartInstance.current.destroy();
-    if (spendingTimeChartRef.current && summaryData?.charts?.spendingOverTime) {
+    if (spendingTimeChartRef.current && summaryData?.charts?.spendOverTime) {
       try {
         const styles = getComputedStyle(document.documentElement);
         const accentColor = styles.getPropertyValue('--color-accent').trim();
         const accentSoftColor = styles.getPropertyValue('--color-accent-soft').trim();
 
         const ctx = spendingTimeChartRef.current.getContext('2d');
-        if (ctx && summaryData.charts.spendingOverTime.labels && summaryData.charts.spendingOverTime.data) {
+        if (ctx && summaryData.charts.spendOverTime.labels && summaryData.charts.spendOverTime.data) {
           spendingTimeChartInstance.current = new Chart(ctx, {
             type: 'line',
             data: {
-              labels: summaryData.charts.spendingOverTime.labels,
+              labels: summaryData.charts.spendOverTime.labels,
               datasets: [{
                 label: t.totalSpend,
-                data: summaryData.charts.spendingOverTime.data,
+                data: summaryData.charts.spendOverTime.data,
                 borderColor: accentColor,
                 backgroundColor: accentSoftColor,
                 fill: true,
@@ -240,7 +241,7 @@ useEffect(() => {
           });
         }
       } catch (error) {
-        console.error('Error rendering spending time chart:', error);
+            logger.error('Error rendering spending time chart:', error);
       }
     }
     return () => {
@@ -253,7 +254,7 @@ useEffect(() => {
 
   useEffect(() => {
     if (spendingCategoryChartInstance.current) spendingCategoryChartInstance.current.destroy();
-    if (spendingCategoryChartRef.current && summaryData?.charts?.spendingByCategory) {
+    if (spendingCategoryChartRef.current && summaryData?.charts?.spendByCategory) {
       try {
         const styles = getComputedStyle(document.documentElement);
         const palette = [
@@ -265,14 +266,14 @@ useEffect(() => {
         ];
 
         const ctx = spendingCategoryChartRef.current.getContext('2d');
-        if (ctx && summaryData.charts.spendingByCategory.labels && summaryData.charts.spendingByCategory.data) {
+        if (ctx && summaryData.charts.spendByCategory.labels && summaryData.charts.spendByCategory.data) {
           spendingCategoryChartInstance.current = new Chart(ctx, {
             type: 'doughnut',
             data: {
-              labels: summaryData.charts.spendingByCategory.labels,
+              labels: summaryData.charts.spendByCategory.labels,
               datasets: [{
                 label: t.totalSpend,
-                data: summaryData.charts.spendingByCategory.data,
+                data: summaryData.charts.spendByCategory.data,
                 backgroundColor: palette,
                 borderWidth: 0,
               }],
@@ -281,7 +282,7 @@ useEffect(() => {
           });
         }
       } catch (error) {
-        console.error('Error rendering spending category chart:', error);
+        logger.error('Error rendering spending category chart:', error);
       }
     }
     return () => {

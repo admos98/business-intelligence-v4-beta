@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
-// FIX: Add .ts extension to fix module import error
-import { t } from '../../../shared/translations.ts';
-import { gregorianToJalali, getDaysInJalaliMonth, getFirstDayOfWeekJalali, jalaliToGregorian } from '../../../shared/jalali.ts';
+import { t } from '../../../shared/translations';
+import { gregorianToJalali, getDaysInJalaliMonth, getFirstDayOfWeekJalali, jalaliToGregorian } from '../../../shared/jalali';
 
 interface JalaliCalendarProps {
   selectedDate: Date;

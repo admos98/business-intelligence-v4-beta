@@ -20,20 +20,43 @@ interface StoredData {
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null && !Array.isArray(value);
 
+const validateStringArray = (value: unknown): value is string[] => {
+    return Array.isArray(value) && value.every(item => typeof item === 'string');
+};
+
+const validateArray = (value: unknown): value is unknown[] => {
+    return Array.isArray(value);
+};
+
 const isValidStoredData = (value: unknown): value is StoredData => {
     if (!isPlainObject(value)) {
         return false;
     }
 
     const { lists, customCategories, vendors, categoryVendorMap, itemInfoMap } = value;
-    return (
-        Array.isArray(lists) &&
-        Array.isArray(customCategories) &&
-        Array.isArray(vendors) &&
-        isPlainObject(categoryVendorMap) &&
-        isPlainObject(itemInfoMap)
-        // posItems, sellTransactions, recipes, stockEntries are optional
-    );
+
+    // Validate required fields
+    if (!Array.isArray(lists)) return false;
+    if (!validateStringArray(customCategories)) return false;
+    if (!Array.isArray(vendors)) return false;
+    if (!isPlainObject(categoryVendorMap)) return false;
+    if (!isPlainObject(itemInfoMap)) return false;
+
+    // Validate optional fields if they exist
+    if ('posItems' in value && value.posItems !== undefined && !validateArray(value.posItems)) return false;
+    if ('posCategories' in value && value.posCategories !== undefined && !validateStringArray(value.posCategories)) return false;
+    if ('sellTransactions' in value && value.sellTransactions !== undefined && !validateArray(value.sellTransactions)) return false;
+    if ('recipes' in value && value.recipes !== undefined && !validateArray(value.recipes)) return false;
+    if ('stockEntries' in value && value.stockEntries !== undefined && !isPlainObject(value.stockEntries)) return false;
+
+    // Validate lists array has reasonable size (prevent DoS)
+    if (lists.length > 10000) return false;
+
+    // Validate arrays have reasonable sizes
+    if (customCategories.length > 1000) return false;
+    if (vendors.length > 10000) return false;
+
+    return true;
 };
 
 // Helper function to handle common API request logic
