@@ -38,6 +38,23 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
     handleClose();
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      handleClose();
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      // Focus the confirm button when modal opens
+      const timer = setTimeout(() => {
+        const confirmButton = document.querySelector('[data-confirm-button]') as HTMLButtonElement;
+        confirmButton?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
   if (!isOpen) {
     return null;
   }
@@ -57,14 +74,30 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
       <div
         className={`bg-surface p-6 rounded-xl border border-border w-full max-w-md m-4 transition-all duration-300 ${isModalVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10'}`}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-modal-title"
+        aria-describedby="confirm-modal-message"
       >
         <h2 id="confirm-modal-title" className="text-xl font-bold text-primary mb-4">{title}</h2>
-        <div className="text-secondary mb-6">{message}</div>
+        <div id="confirm-modal-message" className="text-secondary mb-6">{message}</div>
         <div className="mt-6 flex justify-end gap-3">
-          <button type="button" onClick={handleClose} className="px-4 py-2 bg-border text-primary font-medium rounded-lg hover:bg-border/70 transition-colors">
+          <button
+            type="button"
+            onClick={handleClose}
+            className="px-4 py-2 bg-border text-primary font-medium rounded-lg hover:bg-border/70 transition-colors focus-visible-ring"
+            aria-label={t.cancel}
+          >
             {t.cancel}
           </button>
-          <button type="button" onClick={handleConfirm} className={`px-4 py-2 font-medium rounded-lg transition-opacity ${confirmButtonClasses}`}>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            className={`px-4 py-2 font-medium rounded-lg transition-opacity focus-visible-ring ${confirmButtonClasses}`}
+            data-confirm-button
+            aria-label={confirmText || (variant === 'danger' ? t.delete : t.confirm)}
+          >
             {confirmText || (variant === 'danger' ? t.delete : t.confirm)}
           </button>
         </div>

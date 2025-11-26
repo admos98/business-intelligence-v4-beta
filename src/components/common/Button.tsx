@@ -76,6 +76,9 @@ const Button: React.FC<ButtonProps> = memo(({
       onClick={onClick}
       disabled={disabled || loading}
       className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${widthClass} ${className}`}
+      aria-label={typeof children === 'string' ? children : undefined}
+      aria-busy={loading}
+      aria-disabled={disabled || loading}
     >
       {loading ? (
         <>

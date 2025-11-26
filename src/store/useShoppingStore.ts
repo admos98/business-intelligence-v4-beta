@@ -2423,19 +2423,28 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const account = get().getAccountById(accountId);
         if (!account) return 0;
 
+        // If no date specified, return current balance
         if (!asOfDate) {
           return account.balance;
         }
 
-        // Calculate balance up to a specific date
-        const relevantEntries = get().journalEntries.filter(je =>
-          new Date(je.date) <= asOfDate && !je.isReversed
-        );
+        // Calculate balance up to a specific date (including that date)
+        // Start with account's opening balance (stored in account.balance is current, so we recalculate from scratch)
+        const relevantEntries = get().journalEntries
+          .filter(je => {
+            const jeDate = new Date(je.date);
+            return jeDate <= asOfDate && !je.isReversed;
+          })
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+        // Start from 0 (accounts start with 0 balance, or we can add opening balance later if needed)
         let balance = 0;
+
         relevantEntries.forEach(je => {
           je.entries.forEach(e => {
             if (e.accountId === accountId) {
+              // For Assets, Expenses, COGS: debit increases balance, credit decreases
+              // For Liabilities, Equity, Revenue: credit increases balance, debit decreases
               if (account.type === AccountType.Asset || account.type === AccountType.Expense || account.type === AccountType.COGS) {
                 balance += e.debit - e.credit;
               } else {
@@ -2454,6 +2463,32 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           : get().accounts.filter(a => a.isActive);
 
         return accounts.map(account => {
+          // Get opening balance (balance before startDate)
+          let openingBalance = 0;
+          if (startDate) {
+            // Calculate balance up to (but not including) startDate
+            const openingEntries = get().journalEntries
+              .filter(je => {
+                if (je.isReversed) return false;
+                const jeDate = new Date(je.date);
+                return jeDate < startDate;
+              })
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+            openingEntries.forEach(je => {
+              je.entries.forEach(e => {
+                if (e.accountId === account.id) {
+                  if (account.type === AccountType.Asset || account.type === AccountType.Expense || account.type === AccountType.COGS) {
+                    openingBalance += e.debit - e.credit;
+                  } else {
+                    openingBalance += e.credit - e.debit;
+                  }
+                }
+              });
+            });
+          }
+
+          // Get entries in the date range
           const relevantEntries = get().journalEntries
             .filter(je => {
               if (je.isReversed) return false;
@@ -2464,9 +2499,8 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             })
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-          let runningBalance = startDate
-            ? get().getAccountBalance(account.id, startDate)
-            : 0;
+          // Start running balance from opening balance
+          let runningBalance = openingBalance;
 
           const entries = relevantEntries.map(je => {
             const accountEntry = je.entries.find(e => e.accountId === account.id);
@@ -2475,7 +2509,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
             const debit = accountEntry.debit;
             const credit = accountEntry.credit;
 
-            // Update running balance
+            // Update running balance based on account type
             if (account.type === AccountType.Asset || account.type === AccountType.Expense || account.type === AccountType.COGS) {
               runningBalance += debit - credit;
             } else {
@@ -2495,7 +2529,7 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           return {
             account,
             entries,
-            openingBalance: startDate ? get().getAccountBalance(account.id, startDate) : 0,
+            openingBalance,
             closingBalance: runningBalance,
           };
         });
@@ -2509,22 +2543,25 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
           const balance = get().getAccountBalance(account.id, date);
 
           // Determine debit or credit based on account type and balance
+          // Trial balance shows the normal balance side for each account
           let debit = 0;
           let credit = 0;
 
           if (account.type === AccountType.Asset || account.type === AccountType.Expense || account.type === AccountType.COGS) {
             // Normal debit balance accounts
-            if (balance >= 0) {
+            // If balance is positive, it's a debit; if negative, it's a credit (abnormal)
+            if (balance > 0) {
               debit = balance;
-            } else {
-              credit = Math.abs(balance);
+            } else if (balance < 0) {
+              credit = Math.abs(balance); // Abnormal credit balance
             }
           } else {
             // Normal credit balance accounts (Liability, Equity, Revenue)
-            if (balance >= 0) {
+            // If balance is positive, it's a credit; if negative, it's a debit (abnormal)
+            if (balance > 0) {
               credit = balance;
-            } else {
-              debit = Math.abs(balance);
+            } else if (balance < 0) {
+              debit = Math.abs(balance); // Abnormal debit balance
             }
           }
 
@@ -3118,42 +3155,87 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const equity = accounts.filter(a => a.type === AccountType.Equity);
 
         // Get balances as of date
-        const assetBalances = assets.map(acc => ({
-          account: acc,
-          amount: get().getAccountBalance(acc.id, date)
-        })).filter(item => item.amount !== 0);
+        // For balance sheet display, we show the normal balance side:
+        // Assets: debit balance (positive), Liabilities/Equity: credit balance (positive)
+        const allAssetBalances = assets.map(acc => {
+          const balance = get().getAccountBalance(acc.id, date);
+          // Assets should have debit balances (positive), but show absolute value for display
+          return {
+            account: acc,
+            amount: balance >= 0 ? balance : Math.abs(balance) // Show positive, but flag if negative
+          };
+        }).filter(item => item.amount !== 0); // Only show accounts with balances
 
-        const liabilityBalances = liabilities.map(acc => ({
-          account: acc,
-          amount: get().getAccountBalance(acc.id, date)
-        })).filter(item => item.amount !== 0);
+        const allLiabilityBalances = liabilities.map(acc => {
+          const balance = get().getAccountBalance(acc.id, date);
+          // Liabilities should have credit balances (positive), but show absolute value for display
+          return {
+            account: acc,
+            amount: balance >= 0 ? balance : Math.abs(balance) // Show positive, but flag if negative
+          };
+        }).filter(item => item.amount !== 0); // Only show accounts with balances
 
-        const equityBalances = equity.map(acc => ({
-          account: acc,
-          amount: get().getAccountBalance(acc.id, date)
-        })).filter(item => item.amount !== 0);
+        const allEquityBalances = equity.map(acc => {
+          const balance = get().getAccountBalance(acc.id, date);
+          // Equity should have credit balances (positive), but show absolute value for display
+          return {
+            account: acc,
+            amount: balance >= 0 ? balance : Math.abs(balance) // Show positive, but flag if negative
+          };
+        }).filter(item => item.amount !== 0); // Only show accounts with balances
 
-        // For now, treat all assets as current (can be enhanced later)
-        const totalAssets = assetBalances.reduce((sum, item) => sum + item.amount, 0);
-        const totalLiabilities = liabilityBalances.reduce((sum, item) => sum + item.amount, 0);
-        const totalEquity = equityBalances.reduce((sum, item) => sum + item.amount, 0);
+        // Separate current and non-current assets/liabilities
+        // For now, we'll categorize based on account codes:
+        // Current assets: Cash (1-101), Bank (1-102), Inventory (1-201), AR (1-301)
+        // Non-current: Everything else with code >= 1-400
+        const currentAssets = allAssetBalances.filter(item => {
+          const code = parseInt(item.account.code.split('-')[1]);
+          return code < 400; // Codes 101-399 are current assets
+        });
+        const nonCurrentAssets = allAssetBalances.filter(item => {
+          const code = parseInt(item.account.code.split('-')[1]);
+          return code >= 400;
+        });
 
+        // Current liabilities: AP (2-101), Tax Payable (2-201)
+        // Non-current: Everything else with code >= 2-300
+        const currentLiabilities = allLiabilityBalances.filter(item => {
+          const code = parseInt(item.account.code.split('-')[1]);
+          return code < 300;
+        });
+        const nonCurrentLiabilities = allLiabilityBalances.filter(item => {
+          const code = parseInt(item.account.code.split('-')[1]);
+          return code >= 300;
+        });
+
+        // Calculate totals
+        const totalCurrentAssets = currentAssets.reduce((sum, item) => sum + item.amount, 0);
+        const totalNonCurrentAssets = nonCurrentAssets.reduce((sum, item) => sum + item.amount, 0);
+        const totalAssets = totalCurrentAssets + totalNonCurrentAssets;
+
+        const totalCurrentLiabilities = currentLiabilities.reduce((sum, item) => sum + item.amount, 0);
+        const totalNonCurrentLiabilities = nonCurrentLiabilities.reduce((sum, item) => sum + item.amount, 0);
+        const totalLiabilities = totalCurrentLiabilities + totalNonCurrentLiabilities;
+
+        const totalEquity = allEquityBalances.reduce((sum, item) => sum + item.amount, 0);
+
+        // Check if balance sheet equation holds: Assets = Liabilities + Equity
         const balanced = Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01;
 
         return {
           asOfDate: date,
           assets: {
-            current: assetBalances,
-            nonCurrent: [],
+            current: currentAssets,
+            nonCurrent: nonCurrentAssets,
             total: totalAssets,
           },
           liabilities: {
-            current: liabilityBalances,
-            nonCurrent: [],
+            current: currentLiabilities,
+            nonCurrent: nonCurrentLiabilities,
             total: totalLiabilities,
           },
           equity: {
-            accounts: equityBalances,
+            accounts: allEquityBalances,
             total: totalEquity,
           },
           balanced,
@@ -3164,43 +3246,46 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const end = endDate || new Date();
         const start = startDate || new Date(end.getFullYear(), end.getMonth(), 1); // Default to current month
 
-        // Get all journal entries in the period
+        // Get all journal entries in the period (inclusive of start and end dates)
         const relevantEntries = get().journalEntries.filter(je => {
           const jeDate = new Date(je.date);
+          // Include entries on start and end dates
           return jeDate >= start && jeDate <= end && !je.isReversed;
         });
 
         const accounts = get().accounts;
 
-        // Calculate revenue
+        // Calculate revenue - sum of all credits minus debits for revenue accounts in the period
         const revenueAccounts = accounts.filter(a => a.type === AccountType.Revenue && a.isActive);
         const revenue = revenueAccounts.map(acc => {
           let amount = 0;
           relevantEntries.forEach(je => {
             je.entries.forEach(e => {
               if (e.accountId === acc.id) {
-                amount += e.credit - e.debit; // Revenue increases with credits
+                // Revenue accounts: credits increase revenue, debits decrease (e.g., refunds)
+                amount += e.credit - e.debit;
               }
             });
           });
-          return { account: acc, amount };
-        }).filter(item => item.amount !== 0);
+          return { account: acc, amount: Math.max(0, amount) }; // Revenue should not be negative
+        }).filter(item => item.amount > 0); // Only show accounts with positive revenue
 
         const totalRevenue = revenue.reduce((sum, item) => sum + item.amount, 0);
 
-        // Calculate COGS
+        // Calculate COGS - sum of all debits minus credits for COGS accounts in the period
         const cogsAccounts = accounts.filter(a => a.type === AccountType.COGS && a.isActive);
         const cogs = cogsAccounts.map(acc => {
           let amount = 0;
           relevantEntries.forEach(je => {
             je.entries.forEach(e => {
               if (e.accountId === acc.id) {
-                amount += e.debit - e.credit; // COGS increases with debits
+                // COGS accounts: debits increase COGS, credits decrease
+                amount += e.debit - e.credit;
               }
             });
           });
-          return { account: acc, amount };
-        }).filter(item => item.amount !== 0);
+          return { account: acc, amount: Math.max(0, amount) }; // COGS should not be negative
+        }).filter(item => item.amount > 0); // Only show accounts with COGS
 
         const totalCOGS = cogs.reduce((sum, item) => sum + item.amount, 0);
 
@@ -3208,19 +3293,20 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         const grossProfit = totalRevenue - totalCOGS;
         const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
-        // Calculate expenses
+        // Calculate expenses - sum of all debits minus credits for expense accounts in the period
         const expenseAccounts = accounts.filter(a => a.type === AccountType.Expense && a.isActive);
         const expenses = expenseAccounts.map(acc => {
           let amount = 0;
           relevantEntries.forEach(je => {
             je.entries.forEach(e => {
               if (e.accountId === acc.id) {
-                amount += e.debit - e.credit; // Expenses increase with debits
+                // Expense accounts: debits increase expenses, credits decrease (e.g., reversals)
+                amount += e.debit - e.credit;
               }
             });
           });
-          return { account: acc, amount };
-        }).filter(item => item.amount !== 0);
+          return { account: acc, amount: Math.max(0, amount) }; // Expenses should not be negative
+        }).filter(item => item.amount > 0); // Only show accounts with expenses
 
         const totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
 

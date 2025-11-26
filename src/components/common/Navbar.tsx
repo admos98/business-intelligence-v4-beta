@@ -292,6 +292,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate, onLogout, page
         className={`fixed md:static inset-y-0 right-0 bg-surface border-l border-border-strong transition-all duration-300 ease-in-out z-40 ${sidebarWidth} ${
           isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'
         } flex flex-col shadow-elevated md:shadow-none`}
+        aria-label="Navigation menu"
       >
         {/* Logo/Header Section */}
         <div className="p-5 border-b border-border flex items-center justify-between gap-3 bg-surface-elevated">
@@ -322,12 +323,15 @@ const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate, onLogout, page
           <div className="p-4 border-b border-border bg-surface-elevated">
             <div className="relative">
               <SearchIcon />
+              <label htmlFor="navbar-search" className="sr-only">جستجو در منو</label>
               <input
+                id="navbar-search"
                 type="text"
                 placeholder="جستجو در منو..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pr-10 pl-3 py-2 bg-background border border-border rounded-lg text-sm text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
+                aria-label="جستجو در منو"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 text-secondary pointer-events-none">
                 <SearchIcon />
@@ -337,7 +341,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate, onLogout, page
         )}
 
         {/* Navigation Items */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1 smooth-scroll">
+        <nav className="flex-1 overflow-y-auto p-3 space-y-1 smooth-scroll" aria-label="Main navigation">
           {filteredItems.map((item) => {
             if (item.isSeparator) {
               return (
@@ -361,7 +365,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate, onLogout, page
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group focus-visible-ring ${
                   isCollapsed ? 'justify-center' : 'text-right'
                 } ${
                   isActive
@@ -369,6 +373,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate, onLogout, page
                     : 'text-primary hover:bg-border active:scale-[0.98]'
                 }`}
                 title={isCollapsed ? item.label : undefined}
+                aria-label={item.label}
                 aria-current={isActive ? 'page' : undefined}
               >
                 <span className={`flex-shrink-0 ${isActive ? 'text-accent-text' : 'text-secondary group-hover:text-primary'}`}>
@@ -401,10 +406,11 @@ const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate, onLogout, page
               onLogout();
               setIsOpen(false);
             }}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 bg-danger/10 text-danger rounded-lg hover:bg-danger/20 active:scale-[0.98] transition-all duration-200 text-sm font-medium ${
+            className={`w-full flex items-center gap-2 px-3 py-2.5 bg-danger/10 text-danger rounded-lg hover:bg-danger/20 active:scale-[0.98] transition-all duration-200 text-sm font-medium focus-visible-ring ${
               isCollapsed ? 'justify-center' : ''
             }`}
             title={isCollapsed ? 'خروج' : undefined}
+            aria-label="خروج از سیستم"
           >
             <LogoutIcon />
             {!isCollapsed && <span>خروج</span>}
