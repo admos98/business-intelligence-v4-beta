@@ -15,7 +15,7 @@ interface BuyItemModalProps {
 }
 
 const BuyItemModal: React.FC<BuyItemModalProps> = ({ item, onClose, onConfirm }) => {
-  const { vendors, categoryVendorMap, getLatestPurchaseInfo } = useShoppingStore();
+  const { vendors, categoryVendorMap, getLatestPurchaseInfo, getLatestPurchaseInfoByVendor, findOrCreateVendor } = useShoppingStore();
   const [isOpen, setIsOpen] = useState(false);
   const [purchasedAmount, setPurchasedAmount] = useState<number | ''>(item.amount ?? '');
   const [pricePerUnit, setPricePerUnit] = useState<number | ''>('');
@@ -48,6 +48,21 @@ const BuyItemModal: React.FC<BuyItemModalProps> = ({ item, onClose, onConfirm })
         }
     }
   }, [item, getLatestPurchaseInfo, vendors, categoryVendorMap]);
+
+  const handleVendorChange = (vendorName: string) => {
+    setVendor(vendorName);
+
+    // Prefill price based on vendor selection if vendor has been used before for this item
+    if (vendorName.trim()) {
+      const vendorId = findOrCreateVendor(vendorName);
+      if (vendorId) {
+        const vendorInfo = getLatestPurchaseInfoByVendor(item.name, item.unit, vendorId);
+        if (vendorInfo.pricePerUnit) {
+          setPricePerUnit(vendorInfo.pricePerUnit);
+        }
+      }
+    }
+  };
 
 
   const totalPrice = useMemo(() => (Number(purchasedAmount) || 0) * (Number(pricePerUnit) || 0), [purchasedAmount, pricePerUnit]);
@@ -101,24 +116,27 @@ const BuyItemModal: React.FC<BuyItemModalProps> = ({ item, onClose, onConfirm })
                   value={pricePerUnit}
                   onChange={(e) => {
                     const value = e.target.value === '' ? '' : parseFloat(e.target.value);
-                    if (value === '' || (typeof value === 'number' && value >= 0 && value <= 10000000)) {
+                    if (value === '' || (typeof value === 'number' && value >= 0)) {
                       setPricePerUnit(value);
                     }
                   }}
                   min="0"
-                  max="10000000"
-                  step="1"
+                  step="0.01"
                   className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
                   required
                 />
-                {typeof pricePerUnit === 'number' && pricePerUnit > 10000000 && (
-                  <p className="text-xs text-danger mt-1">قیمت نمی‌تواند بیشتر از ۱۰ میلیون ریال باشد</p>
-                )}
               </div>
             </div>
              <div>
                 <label className="block text-sm font-medium text-secondary mb-1">{t.vendor}</label>
-                <input type="text" list="vendors" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder={t.vendorPlaceholder} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"/>
+                <input
+                  type="text"
+                  list="vendors"
+                  value={vendor}
+                  onChange={(e) => handleVendorChange(e.target.value)}
+                  placeholder={t.vendorPlaceholder}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                />
                  <datalist id="vendors">
                     {vendors.map(v => <option key={v.id} value={v.name} />)}
                  </datalist>

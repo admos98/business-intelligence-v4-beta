@@ -124,3 +124,4 @@ const MyComponent = () => {
 - The refactored version (`useShoppingStoreRefactored.ts`) is a reference implementation
 - Both can coexist during the migration period
 - No breaking changes have been introduced
+

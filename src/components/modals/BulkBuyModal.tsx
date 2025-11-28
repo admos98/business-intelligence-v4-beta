@@ -17,7 +17,7 @@ interface PurchaseDetail {
 }
 
 const BulkBuyModal: React.FC<BulkBuyModalProps> = ({ items, onClose, onConfirm }) => {
-  const { vendors, getLatestPurchaseInfo } = useShoppingStore();
+  const { vendors, getLatestPurchaseInfo, getLatestPurchaseInfoByVendor, findOrCreateVendor } = useShoppingStore();
   const [isOpen, setIsOpen] = useState(false);
   const [sharedVendor, setSharedVendor] = useState('');
   const [sharedPaymentMethod, setSharedPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Card);
@@ -44,6 +44,31 @@ const BulkBuyModal: React.FC<BulkBuyModalProps> = ({ items, onClose, onConfirm }
         setPurchaseDetails(newPurchaseDetails);
     }
   }, []);
+
+  const handleSharedVendorChange = (vendorName: string) => {
+    setSharedVendor(vendorName);
+
+    // Prefill prices for all items based on vendor selection
+    if (vendorName.trim()) {
+      const vendorId = findOrCreateVendor(vendorName);
+      if (vendorId) {
+        const newPurchaseDetails = { ...purchaseDetails };
+        let detailsChanged = false;
+
+        items.forEach(item => {
+          const vendorInfo = getLatestPurchaseInfoByVendor(item.name, item.unit, vendorId);
+          if (vendorInfo.pricePerUnit && newPurchaseDetails[item.id].pricePerUnit === '') {
+            newPurchaseDetails[item.id].pricePerUnit = vendorInfo.pricePerUnit;
+            detailsChanged = true;
+          }
+        });
+
+        if (detailsChanged) {
+          setPurchaseDetails(newPurchaseDetails);
+        }
+      }
+    }
+  };
 
   const handleClose = () => {
     setIsOpen(false);
@@ -82,7 +107,14 @@ const BulkBuyModal: React.FC<BulkBuyModalProps> = ({ items, onClose, onConfirm }
         <form onSubmit={handleSubmit} className="flex-grow flex flex-col min-h-0">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 flex-shrink-0">
             <div className="md:col-span-1">
-              <input type="text" list="vendors" value={sharedVendor} onChange={e => setSharedVendor(e.target.value)} placeholder={t.sharedVendor} className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"/>
+              <input
+                type="text"
+                list="vendors"
+                value={sharedVendor}
+                onChange={e => handleSharedVendorChange(e.target.value)}
+                placeholder={t.sharedVendor}
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+              />
               <datalist id="vendors">
                 {vendors.map(v => <option key={v.id} value={v.name} />)}
               </datalist>
@@ -98,9 +130,27 @@ const BulkBuyModal: React.FC<BulkBuyModalProps> = ({ items, onClose, onConfirm }
                 const d = purchaseDetails[item.id];
                 const total = (Number(d?.purchasedAmount) || 0) * (Number(d?.pricePerUnit) || 0);
                 return (<div key={item.id} className="p-3 bg-background rounded-lg border border-border"><p className="font-bold text-primary mb-2">{item.name}</p><div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <input type="number" value={d.purchasedAmount} onChange={e => handleDetailChange(item.id, 'purchasedAmount', e.target.value)} className="w-full px-2 py-1 bg-surface border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-accent" placeholder={t.quantityPurchased} required/>
+                    <input
+                      type="number"
+                      value={d.purchasedAmount}
+                      onChange={e => handleDetailChange(item.id, 'purchasedAmount', e.target.value)}
+                      className="w-full px-2 py-1 bg-surface border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-accent"
+                      placeholder={t.quantityPurchased}
+                      min="0.01"
+                      step="0.01"
+                      required
+                    />
                     <div>
-                        <input type="number" value={d.pricePerUnit} onChange={e => handleDetailChange(item.id, 'pricePerUnit', e.target.value)} className="w-full px-2 py-1 bg-surface border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-accent" placeholder={t.pricePerUnitLabel} required/>
+                        <input
+                          type="number"
+                          value={d.pricePerUnit}
+                          onChange={e => handleDetailChange(item.id, 'pricePerUnit', e.target.value)}
+                          className="w-full px-2 py-1 bg-surface border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-accent"
+                          placeholder={t.pricePerUnitLabel}
+                          min="0"
+                          step="0.01"
+                          required
+                        />
                     </div>
                     <div className="self-center text-center">
                         <span className="text-xs text-secondary">{t.calculatedTotal}: </span>

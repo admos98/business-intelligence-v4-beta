@@ -3,3 +3,4 @@
 // This file re-exports the store with the same API as before
 
 export { useShoppingStore } from './useShoppingStore';
+

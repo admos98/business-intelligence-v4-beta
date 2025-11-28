@@ -859,6 +859,56 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     addToast('CSV فروش‌ها صادر شد', 'success');
   }, [store.sellTransactions, addToast]);
 
+  const handleExportPOSItemsJson = useCallback(() => {
+    const dataString = JSON.stringify(posItems, null, 2);
+    const blob = new Blob([dataString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pos_items_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast('کالاهای POS با موفقیت صادر شدند', 'success');
+  }, [posItems, addToast]);
+
+  const handleExportPOSItemsCsv = useCallback(() => {
+    if (!posItems || posItems.length === 0) {
+      addToast('هیچ کالای POS برای صادر کردن وجود ندارد', 'info');
+      return;
+    }
+    const headers = ['id', 'name', 'category', 'sellPrice', 'recipeId', 'isTaxable', 'taxRateId', 'variants', 'customizations'];
+    const rows = posItems.map(item => {
+      const variantsStr = item.variants ? item.variants.map(v => {
+        const optsStr = v.options ? v.options.map(o => `${o.name}(${o.price || o.priceModifier || 0})`).join(';') : '';
+        return `${v.name}[${v.type}]:${optsStr}`;
+      }).join(' | ') : '';
+      const customizationsStr = item.customizations ? item.customizations.map(c => {
+        const optsStr = c.options ? c.options.map(o => `${o.name}(${o.price || o.priceModifier || 0})`).join(';') : '';
+        return `${c.name}[${c.type}]:${optsStr}`;
+      }).join(' | ') : '';
+      return [
+        item.id,
+        item.name,
+        item.category,
+        String(item.sellPrice),
+        item.recipeId || '',
+        item.isTaxable !== undefined ? String(item.isTaxable) : '',
+        item.taxRateId || '',
+        `"${variantsStr}"`,
+        `"${customizationsStr}"`
+      ];
+    });
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pos_items_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast('CSV کالاهای POS صادر شد', 'success');
+  }, [posItems, addToast]);
+
   // Get low stock alerts
   const lowStockItems = useMemo(() => {
     const lowStock: Array<{ name: string; unit: Unit; currentStock: number; recipeId?: string }> = [];
@@ -1057,10 +1107,16 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
           تنظیمات رسید
         </Button>
         <Button key="export-csv" variant="ghost" size="sm" onClick={handleExportTransactionsCsv} fullWidth>
-          صادر CSV
+          صادر CSV فروش‌ها
         </Button>
         <Button key="export-json" variant="ghost" size="sm" onClick={handleExportTransactionsJson} fullWidth>
-          صادر JSON
+          صادر JSON فروش‌ها
+        </Button>
+        <Button key="export-pos-items-csv" variant="ghost" size="sm" onClick={handleExportPOSItemsCsv} fullWidth>
+          صادر CSV کالاها
+        </Button>
+        <Button key="export-pos-items-json" variant="ghost" size="sm" onClick={handleExportPOSItemsJson} fullWidth>
+          صادر JSON کالاها
         </Button>
         <Button key="print-cart" variant="primary" size="sm" onClick={handlePrintCart} fullWidth>
           چاپ سبد
@@ -1078,7 +1134,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       // Cleanup: set actions to null synchronously to avoid DOM manipulation errors
       setActions(null);
     };
-  }, [setActions, handleExportTransactionsCsv, handleExportTransactionsJson, handlePrintCart, onViewSellAnalysis, getActiveShift]);
+  }, [setActions, handleExportTransactionsCsv, handleExportTransactionsJson, handleExportPOSItemsCsv, handleExportPOSItemsJson, handlePrintCart, onViewSellAnalysis, getActiveShift]);
 
   return (
     <>

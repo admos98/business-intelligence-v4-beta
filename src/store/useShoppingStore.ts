@@ -104,6 +104,7 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   getItemInfo: (name: string) => { unit: Unit, category: string } | undefined;
   getLatestPricePerUnit: (name: string, unit: Unit) => number | undefined;
   getLatestPurchaseInfo: (name: string, unit: Unit) => { pricePerUnit?: number, vendorId?: string, lastAmount?: number };
+  getLatestPurchaseInfoByVendor: (name: string, unit: Unit, vendorId: string) => { pricePerUnit?: number, lastAmount?: number };
   getSmartSuggestions: () => SmartSuggestion[];
   getSmartItemSuggestions: (query: string, limit?: number) => Array<{ name: string; unit: Unit; category: string; score: number; reason?: string }>;
   getPendingPayments: () => PendingPaymentItem[];
@@ -1127,6 +1128,28 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
                     return {
                         pricePerUnit,
                         vendorId: latest.vendorId,
+                        lastAmount: latest.purchasedAmount
+                    };
+                  }
+              }
+          }
+          return {};
+      },
+      getLatestPurchaseInfoByVendor: (name, unit, vendorId) => {
+          const allPurchasesOfItem = get().lists
+              .flatMap(list => list.items
+                  .filter(item => item.name === name && item.unit === unit && item.status === ItemStatus.Bought && item.vendorId === vendorId && item.paidPrice && item.purchasedAmount && item.purchasedAmount > 0)
+                  .map(item => ({ ...item, purchaseDate: new Date(list.createdAt) }))
+              )
+              .sort((a, b) => b.purchaseDate.getTime() - a.purchaseDate.getTime());
+
+          if (allPurchasesOfItem.length > 0) {
+              const latest = allPurchasesOfItem[0];
+              if (latest.paidPrice && latest.purchasedAmount && latest.purchasedAmount > 0) {
+                  const pricePerUnit = calculatePricePerUnit(latest.paidPrice, latest.purchasedAmount);
+                  if (pricePerUnit !== undefined) {
+                    return {
+                        pricePerUnit,
                         lastAmount: latest.purchasedAmount
                     };
                   }
