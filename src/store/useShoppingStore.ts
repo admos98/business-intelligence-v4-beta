@@ -77,6 +77,7 @@ interface FullShoppingState extends AuthSlice, ShoppingState {
   addPOSItem: (data: Omit<POSItem, 'id'>) => string;
   updatePOSItem: (posItemId: string, updates: Partial<POSItem>) => void;
   deletePOSItem: (posItemId: string) => void;
+  reorderPOSItems: (itemIds: string[]) => void; // Reorder POS items by array of IDs
   getPOSItemsByCategory: (category: string) => POSItem[];
   getFrequentPOSItems: (limit: number) => POSItem[]; // Most sold items
 
@@ -2610,9 +2611,14 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
 
       // ========== POS ITEMS ACTIONS ==========
       addPOSItem: (data) => {
+        const currentItems = get().posItems;
+        const maxOrder = currentItems.length > 0
+          ? Math.max(...currentItems.map(item => item.order ?? 0), -1)
+          : -1;
         const newPOSItem: POSItem = {
           id: `pos-${Date.now()}`,
           ...data,
+          order: maxOrder + 1,
         };
         set(state => ({
           posItems: [...state.posItems, newPOSItem],
@@ -2652,11 +2658,38 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         debouncedSaveData(get);
       },
 
+      reorderPOSItems: (itemIds) => {
+        set(state => {
+          const itemMap = new Map(state.posItems.map(item => [item.id, item]));
+          const reorderedItems = itemIds
+            .map((id, index) => {
+              const item = itemMap.get(id);
+              if (!item) return null;
+              return { ...item, order: index };
+            })
+            .filter((item): item is POSItem => item !== null);
+
+          // Add any items not in the reordered list (shouldn't happen, but safety check)
+          const reorderedIds = new Set(itemIds);
+          const remainingItems = state.posItems
+            .filter(item => !reorderedIds.has(item.id))
+            .map((item, index) => ({ ...item, order: itemIds.length + index }));
+
+          return {
+            posItems: [...reorderedItems, ...remainingItems].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+          };
+        });
+        debouncedSaveData(get);
+      },
+
       getPOSItemsByCategory: (category) => {
-        return get().posItems.filter(item => item.category === category);
+        return get().posItems
+          .filter(item => item.category === category)
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       },
 
       getFrequentPOSItems: (limit) => {
+        const items = get().posItems;
         const itemSaleCount = new Map<string, number>();
         get().sellTransactions.forEach(transaction => {
           transaction.items.forEach(item => {
@@ -2665,7 +2698,13 @@ export const useShoppingStore = create<FullShoppingState>((set, get) => ({
         });
 
         return get().posItems
-          .sort((a, b) => (itemSaleCount.get(b.id) || 0) - (itemSaleCount.get(a.id) || 0))
+          .filter(item => itemSaleCount.has(item.id))
+          .sort((a, b) => {
+            // First sort by sale count (descending), then by order
+            const countDiff = (itemSaleCount.get(b.id) || 0) - (itemSaleCount.get(a.id) || 0);
+            if (countDiff !== 0) return countDiff;
+            return (a.order ?? 0) - (b.order ?? 0);
+          })
           .slice(0, limit);
       },
 

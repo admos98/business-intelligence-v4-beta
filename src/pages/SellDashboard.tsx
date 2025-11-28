@@ -20,7 +20,7 @@ const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w
 
 const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => {
   const store = useShoppingStore();
-  const { posItems, getPOSItemsByCategory, getFrequentPOSItems, addSellTransaction, addPOSItem, updatePOSItem, deletePOSItem, updateSellTransaction, deleteSellTransaction, addPOSCategory, posCategories: storePosCategories, startShift, endShift, getActiveShift, getShiftTransactions, taxSettings, calculateTaxForAmount } = store;
+  const { posItems, getPOSItemsByCategory, getFrequentPOSItems, addSellTransaction, addPOSItem, updatePOSItem, deletePOSItem, reorderPOSItems, updateSellTransaction, deleteSellTransaction, addPOSCategory, posCategories: storePosCategories, startShift, endShift, getActiveShift, getShiftTransactions, taxSettings, calculateTaxForAmount } = store;
 
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [cart, setCart] = useState<Map<string, { posItemId: string; name: string; quantity: number; unitPrice: number; customizations: Record<string, string | number | { optionId: string; amount: number }> }>>(new Map());
@@ -91,7 +91,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
   }, [posCategories, selectedCategory]);
 
   const currentCategoryItems = useMemo(() => {
-    const items = selectedCategory ? getPOSItemsByCategory(selectedCategory) : posItems;
+    const items = selectedCategory ? getPOSItemsByCategory(selectedCategory) : posItems.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     if (!itemSearch.trim()) return items;
     const q = itemSearch.trim().toLowerCase();
     return items.filter(i => i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q));
@@ -909,6 +909,158 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
     addToast('CSV کالاهای POS صادر شد', 'success');
   }, [posItems, addToast]);
 
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
+
+  const handleImportPOSItems = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const result = e.target?.result;
+        if (typeof result === 'string') {
+          const parsedData = JSON.parse(result);
+
+          // Handle both array of items and object with posItems property
+          let itemsToImport: POSItem[] = [];
+          if (Array.isArray(parsedData)) {
+            itemsToImport = parsedData;
+          } else if (parsedData.posItems && Array.isArray(parsedData.posItems)) {
+            itemsToImport = parsedData.posItems;
+          } else {
+            throw new Error('Invalid file format. Expected array of POS items or object with posItems property.');
+          }
+
+          if (itemsToImport.length === 0) {
+            addToast('فایل خالی است', 'info');
+            return;
+          }
+
+          // Validate items
+          const validItems: POSItem[] = [];
+          for (const item of itemsToImport) {
+            if (item.name && typeof item.sellPrice === 'number' && item.category) {
+              // Generate new ID and preserve order if exists
+              const maxOrder = posItems.length > 0
+                ? Math.max(...posItems.map(i => i.order ?? 0), -1)
+                : -1;
+              validItems.push({
+                ...item,
+                id: `pos-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                order: item.order !== undefined ? item.order : maxOrder + validItems.length + 1,
+              });
+            }
+          }
+
+          if (validItems.length === 0) {
+            addToast('هیچ کالای معتبری در فایل یافت نشد', 'error');
+            return;
+          }
+
+          // Add items
+          validItems.forEach(item => {
+            const { id, order, ...itemData } = item;
+            const newId = addPOSItem(itemData);
+            // Update order if it was specified
+            if (order !== undefined) {
+              updatePOSItem(newId, { order });
+            }
+          });
+
+          addToast(`${validItems.length} کالا با موفقیت وارد شد`, 'success');
+        } else {
+          throw new Error("File could not be read as text.");
+        }
+      } catch (error) {
+        addToast('خطا در وارد کردن فایل', 'error');
+        console.error("Import failed:", error);
+      }
+    };
+    reader.readAsText(file);
+    if (event.target) event.target.value = '';
+  }, [posItems, addPOSItem, updatePOSItem, addToast]);
+
+  const triggerImportPOSItems = useCallback(() => {
+    importInputRef.current?.click();
+  }, []);
+
+  const handleDragStart = useCallback((e: React.DragEvent, itemId: string) => {
+    setDraggedItemId(itemId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', itemId);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, itemId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedItemId && draggedItemId !== itemId) {
+      setDragOverItemId(itemId);
+    }
+  }, [draggedItemId]);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOverItemId(null);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetItemId: string) => {
+    e.preventDefault();
+    setDragOverItemId(null);
+
+    if (!draggedItemId || draggedItemId === targetItemId) {
+      setDraggedItemId(null);
+      return;
+    }
+
+    // Get items in current category view
+    const currentItems = currentCategoryItems;
+    const draggedIndex = currentItems.findIndex(item => item.id === draggedItemId);
+    const targetIndex = currentItems.findIndex(item => item.id === targetItemId);
+
+    if (draggedIndex === -1 || targetIndex === -1) {
+      setDraggedItemId(null);
+      return;
+    }
+
+    // Reorder items within the current category view
+    const newItems = [...currentItems];
+    const [removed] = newItems.splice(draggedIndex, 1);
+    newItems.splice(targetIndex, 0, removed);
+
+    // Get all POS items sorted by order
+    const allItems = [...posItems].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+    // Build new order: items from other categories first, then reordered items from current category
+    const reorderedAllItems: POSItem[] = [];
+
+    if (selectedCategory) {
+      // Add items from other categories first (preserve their order)
+      allItems
+        .filter(item => item.category !== selectedCategory)
+        .forEach(item => reorderedAllItems.push(item));
+
+      // Add reordered items from current category
+      newItems.forEach(item => reorderedAllItems.push(item));
+    } else {
+      // No category selected - reorder all items
+      newItems.forEach(item => reorderedAllItems.push(item));
+    }
+
+    // Update order for all items
+    const itemIds = reorderedAllItems.map(item => item.id);
+    reorderPOSItems(itemIds);
+
+    setDraggedItemId(null);
+    addToast('ترتیب کالاها به‌روزرسانی شد', 'success');
+  }, [draggedItemId, currentCategoryItems, posItems, selectedCategory, reorderPOSItems, addToast]);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggedItemId(null);
+    setDragOverItemId(null);
+  }, []);
+
   // Get low stock alerts
   const lowStockItems = useMemo(() => {
     const lowStock: Array<{ name: string; unit: Unit; currentStock: number; recipeId?: string }> = [];
@@ -1118,6 +1270,16 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
         <Button key="export-pos-items-json" variant="ghost" size="sm" onClick={handleExportPOSItemsJson} fullWidth>
           صادر JSON کالاها
         </Button>
+        <Button key="import-pos-items" variant="ghost" size="sm" onClick={triggerImportPOSItems} fullWidth>
+          وارد کردن کالاها
+        </Button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".json"
+          onChange={handleImportPOSItems}
+          className="hidden"
+        />
         <Button key="print-cart" variant="primary" size="sm" onClick={handlePrintCart} fullWidth>
           چاپ سبد
         </Button>
@@ -1134,7 +1296,7 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
       // Cleanup: set actions to null synchronously to avoid DOM manipulation errors
       setActions(null);
     };
-  }, [setActions, handleExportTransactionsCsv, handleExportTransactionsJson, handleExportPOSItemsCsv, handleExportPOSItemsJson, handlePrintCart, onViewSellAnalysis, getActiveShift]);
+  }, [setActions, handleExportTransactionsCsv, handleExportTransactionsJson, handleExportPOSItemsCsv, handleExportPOSItemsJson, triggerImportPOSItems, handlePrintCart, onViewSellAnalysis, getActiveShift]);
 
   return (
     <>
@@ -1284,10 +1446,20 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                     const cartItem = cartArray.find(c => c.posItemId === item.id);
                     const displayName = cartItem?.name || item.name;
                     const displayPrice = cartItem?.unitPrice ?? item.sellPrice;
+                    const isDragging = draggedItemId === item.id;
+                    const isDragOver = dragOverItemId === item.id;
                     return (
                       <div
                         key={item.id}
-                        className="relative group animate-fade-in"
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, item.id)}
+                        onDragOver={(e) => handleDragOver(e, item.id)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, item.id)}
+                        onDragEnd={handleDragEnd}
+                        className={`relative group animate-fade-in cursor-move ${
+                          isDragging ? 'opacity-50' : ''
+                        } ${isDragOver ? 'ring-2 ring-accent ring-offset-2' : ''}`}
                         style={{ animationDelay: `${idx * 20}ms` }}
                       >
                         <button
@@ -1315,6 +1487,12 @@ const SellDashboard: React.FC<SellDashboardProps> = ({ onViewSellAnalysis }) => 
                             </div>
                           )}
                         </button>
+                        {/* Drag handle icon */}
+                        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 8h16M4 16h16" />
+                          </svg>
+                        </div>
                         {/* Edit/Delete buttons - show on hover */}
                         <div className="absolute top-1 left-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button

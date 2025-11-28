@@ -236,6 +236,7 @@ export interface POSItem {
   recipeId?: string; // Link to recipe if this item is made from ingredients
   isTaxable?: boolean; // Whether this item is subject to tax (Phase 3)
   taxRateId?: string; // Specific tax rate for this item (Phase 3)
+  order?: number; // Display order for drag-and-drop arrangement
   variants?: Array<{
     id: string;
     name: string;
